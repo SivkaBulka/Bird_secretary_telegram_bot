@@ -6,10 +6,14 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+# В самом верху после других импортов
+from .handlers import events
 
 from .config import BOT_TOKEN
 from .handlers import group_commands, private_commands, callbacks, message_filter
 from .middlewares.error_handler import ErrorHandlerMiddleware
+# После регистрации остальных роутеров
+dp.include_router(events.router)
 
 # Инициализация бота
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2))
