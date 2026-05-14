@@ -480,3 +480,227 @@ async def setting_command(message: Message):
         return
     # вызов главного меню настроек
     await setting_main(message)  # но setting_main – это колбэк, нужно переделать. Лучше создать функцию show_settings
+    # ---------- /block ----------
+@router.message(Command("block"))
+async def block_command(message: Message, bot: Bot):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    caller_id = str(message.from_user.id)
+    caller_rank = get_user_rank(chat_data, caller_id)
+    if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("**"):
+        await message.reply("Ошибка: недостаточно прав")
+        return
+    args = message.text.split(maxsplit=2)
+    if len(args) < 3:
+        await message.reply("Ошибка: неверный формат сообщения\nПример: /block @username 31.12.25 23.59")
+        return
+    target_username = args[1].lstrip('@')
+    time_str = args[2]
+    try:
+        member = await bot.get_chat_member(message.chat.id, f"@{target_username}")
+        target_id = str(member.user.id)
+        target_name = get_user_mention(member.user)
+    except:
+        await message.reply("Ошибка: пользователь не найден")
+        return
+    if target_id == caller_id:
+        await message.reply("Ошибка: нельзя заблокировать себя")
+        return
+    if target_id == str(bot.id):
+        await message.reply("Ошибка: нельзя заблокировать бота")
+        return
+    tz = int(chat_data["settings"].get("timezone", "+3"))
+    timestamp, error = parse_block_time(time_str, tz)
+    if error:
+        await message.reply(error)
+        return
+    try:
+        await bot.restrict_chat_member(
+            message.chat.id, int(target_id),
+            until_date=timestamp,
+            can_send_messages=False
+        )
+    except Exception:
+        await message.reply("Ошибка: у бота недостаточно прав")
+        return
+    users = chat_data.setdefault("users", {})
+    if target_id not in users:
+        users[target_id] = {"rank": "$", "warns": 0, "blocked_until": None, "msg_total": 0, "msg_last_30d": 0, "msg_last_7d": 0}
+    old_block = users[target_id].get("blocked_until")
+    users[target_id]["blocked_until"] = timestamp
+    await save_chat(chat_id, chat_data)
+    local_dt = datetime.utcfromtimestamp(timestamp) + timedelta(hours=tz)
+    time_str_formatted = local_dt.strftime('%d.%m.%y %H:%M')
+    if old_block and old_block > time.time():
+        old_local = datetime.utcfromtimestamp(old_block) + timedelta(hours=tz)
+        old_str = old_local.strftime('%d.%m.%y %H:%M')
+        await message.reply(f"**Время блокировки {target_name} обновлено с {old_str} до {time_str_formatted}**", parse_mode="MarkdownV2")
+    else:
+        await message.reply(f"**{target_name} выдана блокировка до {time_str_formatted}**", parse_mode="MarkdownV2")
+
+# ---------- /del_block ----------
+@router.message(Command("del_block"))
+async def del_block_command(message: Message, bot: Bot):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    caller_id = str(message.from_user.id)
+    caller_rank = get_user_rank(chat_data, caller_id)
+    if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("**"):
+        await message.reply("Ошибка: недостаточно прав")
+        return
+    if message.reply_to_message:
+        target_id = str(message.reply_to_message.from_user.id)
+        target_name = get_user_mention(message.reply_to_message.from_user)
+    else:
+        args = message.text.split()
+        if len(args) < 2:
+            await message.reply("Ошибка: укажите пользователя (reply или @ник)")
+            return
+        username = args[1].lstrip('@')
+        try:
+            member = await bot.get_chat_member(message.chat.id, f"@{username}")
+            target_id = str(member.user.id)
+            target_name = get_user_mention(member.user)
+        except:
+            await message.reply("Ошибка: пользователь не найден")
+            return
+    if target_id == caller_id:
+        await message.reply("Ошибка: нельзя применить команду к себе")
+        return
+    if target_id == str(bot.id):
+        await message.reply("Ошибка: нельзя применить команду к боту")
+        return
+    users = chat_data.get("users", {})
+    if target_id not in users or not users[target_id].get("blocked_until") or users[target_id]["blocked_until"] <= time.time():
+        await message.reply("Ошибка: пользователь не заблокирован")
+        return
+    try:
+        await bot.restrict_chat_member(
+            message.chat.id, int(target_id),
+            can_send_messages=True,
+            can_send_media_messages=True,
+            can_send_other_messages=True,
+            can_add_web_page_previews=True
+        )
+    except Exception:
+        await message.reply("Ошибка: у бота недостаточно прав")
+        return
+    users[target_id]["blocked_until"] = None
+    await save_chat(chat_id, chat_data)
+    await message.reply(f"**Блокировка {target_name} снята**", parse_mode="MarkdownV2")
+
+# ---------- /list_word (пагинация вынесена в callbacks, здесь только команда) ----------
+@router.message(Command("list_word"))
+async def list_word_command(message: Message):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    settings = chat_data["settings"]
+    access = settings.get("list_word_access", "***")
+    caller_rank = get_user_rank(chat_data, str(message.from_user.id))
+    if access != "$" and RANK_ORDER.index(caller_rank) < RANK_ORDER.index("***"):
+        await message.reply("Ошибка: недостаточно прав")
+        return
+    words = chat_data.get("words", [])
+    if not words:
+        await message.reply("**Чёрный список слов пуст**", parse_mode="MarkdownV2")
+        return
+    # Показываем первую страницу (вызываем колбэк для унификации)
+    # Просто отправляем сообщение с кнопками
+    from ..callbacks import show_list_word_page
+    await show_list_word_page(message, chat_id, 1)
+
+# ---------- /add_word ----------
+@router.message(Command("add_word"))
+async def add_word_command(message: Message):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    caller_rank = get_user_rank(chat_data, str(message.from_user.id))
+    if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("***"):
+        await message.reply("Ошибка: недостаточно прав")
+        return
+    lines = message.text.split('\n', 1)
+    if len(lines) < 2 or not lines[1].strip():
+        await message.reply("Ошибка: неверный формат сообщения\nВведите слова после команды на новой строке, каждое с новой строки")
+        return
+    new_words_raw = lines[1].strip().split('\n')
+    words_list = chat_data.setdefault("words", [])
+    added = []
+    not_added = []
+    for raw in new_words_raw:
+        raw = raw.strip()
+        if not raw:
+            continue
+        normalized = normalize_text(raw)
+        if normalized in words_list:
+            not_added.append(raw)
+        else:
+            words_list.append(normalized)
+            added.append(raw)
+    await save_chat(chat_id, chat_data)
+    response = ""
+    if added:
+        response += "**Успешно добавлено:**\n" + "\n".join(added) + "\n"
+    if not_added:
+        response += "**Уже есть в списке:**\n" + "\n".join(not_added)
+    if not response:
+        response = "Ошибка: неверный формат"
+    await message.reply(response, parse_mode="MarkdownV2")
+
+# ---------- /del_word ----------
+@router.message(Command("del_word"))
+async def del_word_command(message: Message):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    caller_rank = get_user_rank(chat_data, str(message.from_user.id))
+    if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("***"):
+        await message.reply("Ошибка: недостаточно прав")
+        return
+    lines = message.text.split('\n', 1)
+    if len(lines) < 2 or not lines[1].strip():
+        await message.reply("Ошибка: неверный формат сообщения\nВведите слова после команды на новой строке")
+        return
+    del_words_raw = lines[1].strip().split('\n')
+    words_list = chat_data.get("words", [])
+    deleted = []
+    not_found = []
+    for raw in del_words_raw:
+        raw = raw.strip()
+        if not raw:
+            continue
+        normalized = normalize_text(raw)
+        if normalized in words_list:
+            words_list.remove(normalized)
+            deleted.append(raw)
+        else:
+            not_found.append(raw)
+    await save_chat(chat_id, chat_data)
+    response = ""
+    if deleted:
+        response += "**Удалено:**\n" + "\n".join(deleted) + "\n"
+    if not_found:
+        response += "**Не найдено в списке:**\n" + "\n".join(not_found)
+    if not response:
+        response = "Ошибка: неверный формат"
+    await message.reply(response, parse_mode="MarkdownV2")
+
+# ---------- /setting ----------
+@router.message(Command("setting"))
+async def setting_command(message: Message):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    caller_rank = get_user_rank(chat_data, str(message.from_user.id))
+    if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("****"):
+        await message.reply("Ошибка: недостаточно прав")
+        return
+    # Вызываем главное меню настроек (функция из callbacks)
+    from ..callbacks import setting_main
+    # Имитируем callback, чтобы использовать ту же логику
+    # Создадим объект-заглушку с нужными полями
+    class FakeCallback:
+        def __init__(self, message):
+            self.message = message
+            self.from_user = message.from_user
+        async def answer(self, text=None, show_alert=False):
+            pass
+    fake = FakeCallback(message)
+    await setting_main(fake)
