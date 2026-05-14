@@ -6,6 +6,8 @@ from ..database import get_chat, get_default_settings, load_data
 from ..utils import escape_markdown
 from ..config import RANK_ORDER, RANK_NAMES
 from ..filters.chat_type import PrivateChatFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 router = Router()
 router.message.filter(PrivateChatFilter())
