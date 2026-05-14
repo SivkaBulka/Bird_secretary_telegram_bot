@@ -156,3 +156,124 @@ async def set_filter_set(callback: CallbackQuery):
     filter_text = {"off": "Off", "del_warn": "Del & Warn", "only_del": "Only Del", "only_warn": "Only Warn"}[f_val]
     await callback.answer(f"Режим {filter_text} установлен")
     await setting_main(callback)
+# ---------- Пагинация для /list_word ----------
+async def show_list_word_page(target, chat_id: str, page: int):
+    """Отправляет или редактирует сообщение со страницей чёрного списка"""
+    chat_data = await get_chat(chat_id)
+    words = chat_data.get("words", [])
+    items_per_page = 32
+    total_pages = max(1, (len(words) + items_per_page - 1) // items_per_page) if words else 1
+    if page < 1:
+        page = 1
+    if page > total_pages:
+        page = total_pages
+    start = (page - 1) * items_per_page
+    end = start + items_per_page
+    page_words = words[start:end]
+    text = f"**Чёрный список слов, страница {page}/{total_pages}:**\n"
+    if page_words:
+        text += "\n".join(f"• {w}" for w in page_words)
+    else:
+        text += "• Список пуст"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    if total_pages > 1:
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton(text="<", callback_data=f"listword_page|{chat_id}|{page-1}"))
+        if page < total_pages:
+            nav_buttons.append(InlineKeyboardButton(text=">", callback_data=f"listword_page|{chat_id}|{page+1}"))
+        if nav_buttons:
+            keyboard.inline_keyboard.append(nav_buttons)
+    if hasattr(target, 'edit_text'):
+        await target.edit_text(text, parse_mode="MarkdownV2", reply_markup=keyboard)
+    else:
+        await target.reply(text, parse_mode="MarkdownV2", reply_markup=keyboard)
+
+@router.callback_query(F.data.startswith("listword_page|"))
+async def listword_page_callback(callback: CallbackQuery):
+    _, chat_id, page_str = callback.data.split("|")
+    page = int(page_str)
+    chat_data = await get_chat(chat_id)
+    # Проверка прав доступа к листворду (на всякий случай)
+    settings = chat_data["settings"]
+    access = settings.get("list_word_access", "***")
+    caller_rank = get_user_rank(chat_data, str(callback.from_user.id))
+    if access != "$" and RANK_ORDER.index(caller_rank) < RANK_ORDER.index("***"):
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    await show_list_word_page(callback.message, chat_id, page)
+    await callback.answer()
+
+# ---------- Анонимные сообщения (FSM) ----------
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.memory import MemoryStorage
+
+class AnonStates(StatesGroup):
+    waiting_for_chat = State()  # ожидание выбора чата после ввода текста
+
+# Переопределим /anonim через колбэк, но лучше добавим хендлер в private_commands.
+# Для простоты добавим сюда функцию, которая будет вызвана из private_commands.
+
+async def anonim_start(message: Message, bot: Bot, state: FSMContext):
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply("Ошибка: неверный формат сообщения\nИспользуйте: /anonim текст сообщения")
+        return
+    text = parts[1]
+    # Сохраняем текст в состояние
+    await state.update_data(anon_text=text)
+    # Показываем список чатов
+    keyboard = await common_chats_keyboard(message.from_user.id, bot, for_anon=True)
+    if not keyboard.inline_keyboard:
+        await message.reply("Нет общих чатов с включённым анонимным режимом")
+        await state.clear()
+        return
+    await message.reply("Выберите чат для анонимного сообщения:", reply_markup=keyboard)
+    await state.set_state(AnonStates.waiting_for_chat)
+
+@router.callback_query(AnonStates.waiting_for_chat, F.data.startswith("anon_confirm|"))
+async def anon_confirm_callback(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    _, chat_id = callback.data.split("|")
+    user_data = await state.get_data()
+    text = user_data.get("anon_text")
+    if not text:
+        await callback.answer("Ошибка: текст сообщения утерян", show_alert=True)
+        await state.clear()
+        return
+    # Показываем подтверждение
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да", callback_data=f"anon_send|{chat_id}"),
+         InlineKeyboardButton(text="❌ Отмена", callback_data="anon_cancel")]
+    ])
+    await callback.message.edit_text(
+        f"**Вы действительно хотите отправить в чат анонимное сообщение?**\n{escape_markdown(text[:200])}",
+        parse_mode="MarkdownV2",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+    # Состояние не меняем, будет дальше
+
+@router.callback_query(F.data.startswith("anon_send|"))
+async def anon_send_callback(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    _, chat_id = callback.data.split("|")
+    user_data = await state.get_data()
+    text = user_data.get("anon_text")
+    if not text:
+        await callback.answer("Ошибка", show_alert=True)
+        await state.clear()
+        return
+    await bot.send_message(int(chat_id), f"**Новое анонимное сообщение**\n{text}", parse_mode="MarkdownV2")
+    await callback.message.edit_text("✅ Сообщение отправлено")
+    await callback.answer()
+    await state.clear()
+
+@router.callback_query(F.data == "anon_cancel")
+async def anon_cancel_callback(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Отправка отменена")
+    await callback.answer()
+    await state.clear()
+
+# Вспомогательная функция для получения клавиатуры общих чатов (используется и в menu, и в anonim)
+# Она уже определена в private_commands.py, но для доступа из callbacks импортируем её
+from .private_commands import common_chats_keyboard
