@@ -173,24 +173,6 @@ async def menu_back_callback(callback: CallbackQuery, bot: Bot):
 
 # ---------- /anonim ----------
 @router.message(Command("anonim"))
-async def anonim_command(message: Message, bot: Bot):
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
-        await message.reply("Ошибка: неверный формат сообщения")
-        return
-    text = parts[1]
-    user_id = message.from_user.id
-    keyboard = await common_chats_keyboard(user_id, bot, for_anon=True)
-    if not keyboard.inline_keyboard:
-        await message.reply("Нет общих чатов с включённым анонимным режимом")
-        return
-    # сохраняем текст анонимного сообщения в callback_data? невозможно из-за лимита. Используем FSM или временное хранилище.
-    # Для простоты я добавлю отдельный колбэк, который спросит подтверждение. Но текст нужно где-то хранить. Используем временный словарь.
-    # Пока просто сохраним в данных сообщения, но callback_data ограничена. Сделаем так: при выборе чата покажем подтверждение с текстом, который передан.
-    # Чтобы не плодить сложность, я передам текст через параметр колбэка, но тогда длина ограничена. Лучше использовать FSM (aiogram Finite State Machine).
-    # Из-за объёма я реализую упрощённо: при нажатии на кнопку чата сразу отправим сообщение без подтверждения? Но вы хотели подтверждение.
-    # Давайте сделаем с FSM: state "waiting_anon_confirm" с данными {chat_id, text}. Тогда колбэк будет запрашивать подтверждение.
-    # Однако для краткости кода я пока пропущу анонимку, т.к. она требует отдельного состояния. Вы хотите, чтобы я реализовал анонимку полностью с FSM?
-
-    # Временно: заглушка
-    await message.reply("Функция анонимных сообщений будет реализована в следующей версии.")
+async def anonim_command(message: Message, bot: Bot, state: FSMContext):
+    from ..callbacks import anonim_start
+    await anonim_start(message, bot, state)
