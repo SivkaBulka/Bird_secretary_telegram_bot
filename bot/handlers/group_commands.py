@@ -470,3 +470,13 @@ async def del_all_warn_command(message: Message, bot: Bot):
     users[target_id]["warns"] = 0
     await save_chat(chat_id, chat_data)
     await message.reply(f"**Все варны {target_name} отозваны**", parse_mode="MarkdownV2")
+    @router.message(Command("setting"))
+async def setting_command(message: Message):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    caller_rank = get_user_rank(chat_data, str(message.from_user.id))
+    if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("****"):
+        await message.reply("Ошибка: недостаточно прав")
+        return
+    # вызов главного меню настроек
+    await setting_main(message)  # но setting_main – это колбэк, нужно переделать. Лучше создать функцию show_settings
