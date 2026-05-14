@@ -199,3 +199,274 @@ async def help_collapse(callback: CallbackQuery):
     await callback.answer()
 
 # Команда /user (сокращённо, остальные команды аналогично – из-за лимита я напишу только ключевые, но для полного кода нужно продолжение. Продолжу следующим сообщением)
+# ---------- /user ----------
+@router.message(Command("user"))
+async def user_command(message: Message, bot: Bot):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    target_id, target_name, target_rank = await extract_target(message, bot)
+    if not target_id:
+        await message.reply("Ошибка: пользователь не найден")
+        return
+    user_data = chat_data.get("users", {}).get(target_id, {})
+    rank = user_data.get("rank", "$")
+    warns = user_data.get("warns", 0)
+    blocked_until = user_data.get("blocked_until")
+    msg_total = user_data.get("msg_total", 0)
+    msg_30d = user_data.get("msg_last_30d", 0)
+    msg_7d = user_data.get("msg_last_7d", 0)
+    tz = int(chat_data["settings"].get("timezone", "+3"))
+    lines = [f"**Статистика пользователя {escape_markdown(target_name)}**"]
+    lines.append(f"• Ранг: {RANK_NAMES.get(rank, 'участник')}")
+    if warns:
+        lines.append(f"• Всего варнов: {warns}")
+    else:
+        lines.append("• Варны отсутствуют")
+    if blocked_until and blocked_until > time.time():
+        local_time = datetime.utcfromtimestamp(blocked_until) + timedelta(hours=tz)
+        lines.append(f"• Заблокирован до {local_time.strftime('%d.%m.%y %H:%M')}")
+    else:
+        lines.append("• Блокировки отсутствуют")
+    if msg_total:
+        lines.append(f"• Всего сообщений: {msg_total}")
+        lines.append(f"• Сообщений за 30 дней: {msg_30d}")
+        lines.append(f"• Сообщений за 7 дней: {msg_7d}")
+    else:
+        lines.append("• Сообщения отсутствуют")
+    await message.reply("\n".join(lines), parse_mode="MarkdownV2")
+
+# ---------- /chat ----------
+@router.message(Command("chat"))
+async def chat_command(message: Message):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    users = chat_data.get("users", {})
+    settings = chat_data.get("settings", get_default_settings())
+    total_msgs = sum(u.get("msg_total", 0) for u in users.values())
+    msgs_30d = sum(u.get("msg_last_30d", 0) for u in users.values())
+    msgs_7d = sum(u.get("msg_last_7d", 0) for u in users.values())
+    participants = len(users)
+    blocked_now = sum(1 for u in users.values() if u.get("blocked_until") and u["blocked_until"] > time.time())
+    total_warns = sum(u.get("warns", 0) for u in users.values())
+    warned_users = sum(1 for u in users.values() if u.get("warns", 0) > 0)
+    anon = "да" if settings.get("anonymous") == "on" else "нет"
+    list_word_access = "все" if settings.get("list_word_access") == "$" else "ограничен"
+    filter_mode = settings.get("filter_mode", "off")
+    filter_text = {"off": "Off", "only_del": "Only Del", "only_warn": "Only Warn", "del_warn": "Del & Warn"}.get(filter_mode, filter_mode)
+    search_mode = "подстрока" if settings.get("search_mode") == "substring" else "точное совпадение"
+    tz = settings.get("timezone", "+3")
+    lines = [
+        "**Статистика чата**",
+        f"• Всего сообщений: {total_msgs}",
+        f"• Сообщений за 30 дней: {msgs_30d}",
+        f"• Сообщений за 7 дней: {msgs_7d}",
+        f"• Участников: {participants}",
+        f"• Заблокировано сейчас: {blocked_now}",
+        f"• Выдано {total_warns} предупреждений {warned_users} пользователям",
+        f"• Анонимные сообщения: {anon}",
+        f"• Просмотр ЧС слов: {list_word_access}",
+        f"• Режим фильтра: {filter_text}",
+        f"• Тип фильтра: {search_mode}",
+        f"• Часовой пояс: UTC{tz}"
+    ]
+    await message.reply("\n".join(lines), parse_mode="MarkdownV2")
+
+# ---------- /ranks ----------
+@router.message(Command("ranks"))
+async def ranks_command(message: Message, bot: Bot):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    users = chat_data.get("users", {})
+    if not users:
+        await message.reply("**Ранги**\n• Пользователи отсутствуют", parse_mode="MarkdownV2")
+        return
+    rank_lists = {"*": [], "**": [], "***": [], "****": [], "#": []}
+    for uid, data in users.items():
+        rank = data.get("rank", "$")
+        if rank in rank_lists:
+            try:
+                member = await bot.get_chat_member(int(chat_id), int(uid))
+                uname = get_user_mention(member.user)
+            except:
+                uname = f"id{uid}"
+            rank_lists[rank].append(uname)
+    for r in rank_lists:
+        rank_lists[r].sort()
+    lines = ["**Ранги**"]
+    rank_names = {
+        "*": "Младшие модераторы",
+        "**": "Старшие модераторы",
+        "***": "Младшие администраторы",
+        "****": "Старшие администраторы",
+        "#": "Создатель"
+    }
+    for r in ["*", "**", "***", "****", "#"]:
+        names = "; ".join(rank_lists[r]) if rank_lists[r] else "отсутствуют"
+        lines.append(f"• {rank_names[r]}: {names}")
+    await message.reply("\n".join(lines), parse_mode="MarkdownV2")
+
+# ---------- /up ----------
+@router.message(Command("up"))
+async def up_command(message: Message, bot: Bot):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    caller_id = str(message.from_user.id)
+    caller_rank = get_user_rank(chat_data, caller_id)
+    variant = int(chat_data["settings"].get("updown_rights", "1"))
+    if not has_rights(caller_rank, variant):
+        await message.reply("Ошибка: недостаточно прав")
+        return
+    target_id, target_name, target_rank = await extract_target(message, bot)
+    if not target_id:
+        await message.reply("Ошибка: пользователь не найден")
+        return
+    if target_id == caller_id:
+        await message.reply("Ошибка: нельзя повысить себя")
+        return
+    if target_id == str(bot.id):
+        await message.reply("Ошибка: нельзя применить команду к боту")
+        return
+    if target_rank == "#":
+        await message.reply("Ошибка: пользователь уже является создателем")
+        return
+    if not can_up(caller_rank, target_rank, variant):
+        await message.reply("Ошибка: недостаточно прав для повышения этого пользователя")
+        return
+    new_idx = RANK_ORDER.index(target_rank) + 1
+    new_rank = RANK_ORDER[new_idx]
+    users = chat_data.setdefault("users", {})
+    if target_id not in users:
+        users[target_id] = {"rank": "$", "warns": 0, "blocked_until": None, "msg_total": 0, "msg_last_30d": 0, "msg_last_7d": 0}
+    users[target_id]["rank"] = new_rank
+    await save_chat(chat_id, chat_data)
+    await message.reply(f"Пользователь {target_name} повышен до {RANK_NAMES[new_rank]}")
+
+# ---------- /down ----------
+@router.message(Command("down"))
+async def down_command(message: Message, bot: Bot):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    caller_id = str(message.from_user.id)
+    caller_rank = get_user_rank(chat_data, caller_id)
+    variant = int(chat_data["settings"].get("updown_rights", "1"))
+    if not has_rights(caller_rank, variant):
+        await message.reply("Ошибка: недостаточно прав")
+        return
+    target_id, target_name, target_rank = await extract_target(message, bot)
+    if not target_id:
+        await message.reply("Ошибка: пользователь не найден")
+        return
+    if target_id == str(bot.id):
+        await message.reply("Ошибка: нельзя применить команду к боту")
+        return
+    if target_rank == "$":
+        await message.reply("Ошибка: нельзя понизить участника")
+        return
+    if target_rank == "#":
+        await message.reply("Ошибка: нельзя понизить создателя")
+        return
+    if target_id == caller_id:
+        await message.reply("Ошибка: нельзя применить команду к себе")
+        return
+    if not can_down(caller_rank, target_rank):
+        await message.reply("Ошибка: нельзя понизить пользователя с равным или более высоким рангом")
+        return
+    new_idx = RANK_ORDER.index(target_rank) - 1
+    new_rank = RANK_ORDER[new_idx]
+    users = chat_data.setdefault("users", {})
+    if target_id in users:
+        users[target_id]["rank"] = new_rank
+    await save_chat(chat_id, chat_data)
+    await message.reply(f"Пользователь {target_name} понижен до {RANK_NAMES[new_rank]}")
+
+# ---------- /warn ----------
+@router.message(Command("warn"))
+async def warn_command(message: Message, bot: Bot):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    caller_id = str(message.from_user.id)
+    caller_rank = get_user_rank(chat_data, caller_id)
+    if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("*"):
+        await message.reply("Ошибка: недостаточно прав")
+        return
+    target_id, target_name, target_rank = await extract_target(message, bot)
+    if not target_id:
+        await message.reply("Ошибка: пользователь не найден")
+        return
+    if target_id == caller_id:
+        await message.reply("Ошибка: нельзя выдать варн себе")
+        return
+    if target_id == str(bot.id):
+        await message.reply("Ошибка: нельзя выдать варн боту")
+        return
+    if not can_warn(caller_rank, target_rank):
+        await message.reply("Ошибка: нельзя выдать варн пользователю с равным или более высоким рангом")
+        return
+    users = chat_data.setdefault("users", {})
+    if target_id not in users:
+        users[target_id] = {"rank": "$", "warns": 0, "blocked_until": None, "msg_total": 0, "msg_last_30d": 0, "msg_last_7d": 0}
+    users[target_id]["warns"] = users[target_id].get("warns", 0) + 1
+    await save_chat(chat_id, chat_data)
+    await message.reply(f"**Выдан варн {target_name}**\nВсего варнов: {users[target_id]['warns']}", parse_mode="MarkdownV2")
+
+# ---------- /del_warn ----------
+@router.message(Command("del_warn"))
+async def del_warn_command(message: Message, bot: Bot):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    caller_id = str(message.from_user.id)
+    caller_rank = get_user_rank(chat_data, caller_id)
+    if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("*"):
+        await message.reply("Ошибка: недостаточно прав")
+        return
+    target_id, target_name, target_rank = await extract_target(message, bot)
+    if not target_id:
+        await message.reply("Ошибка: пользователь не найден")
+        return
+    if target_id == caller_id:
+        await message.reply("Ошибка: нельзя снять варн себе")
+        return
+    if target_id == str(bot.id):
+        await message.reply("Ошибка: нельзя применить команду к боту")
+        return
+    if not can_warn(caller_rank, target_rank):
+        await message.reply("Ошибка: нельзя снять варн пользователю с равным или более высоким рангом")
+        return
+    users = chat_data.get("users", {})
+    if target_id not in users or users[target_id].get("warns", 0) == 0:
+        await message.reply("Ошибка: у пользователя отсутствуют варны")
+        return
+    users[target_id]["warns"] -= 1
+    await save_chat(chat_id, chat_data)
+    await message.reply(f"**Варн {target_name} отозван**\nВсего варнов: {users[target_id]['warns']}", parse_mode="MarkdownV2")
+
+# ---------- /del_all_warn ----------
+@router.message(Command("del_all_warn"))
+async def del_all_warn_command(message: Message, bot: Bot):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    caller_id = str(message.from_user.id)
+    caller_rank = get_user_rank(chat_data, caller_id)
+    if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("*"):
+        await message.reply("Ошибка: недостаточно прав")
+        return
+    target_id, target_name, target_rank = await extract_target(message, bot)
+    if not target_id:
+        await message.reply("Ошибка: пользователь не найден")
+        return
+    if target_id == caller_id:
+        await message.reply("Ошибка: нельзя снять варны себе")
+        return
+    if target_id == str(bot.id):
+        await message.reply("Ошибка: нельзя применить команду к боту")
+        return
+    if not can_warn(caller_rank, target_rank):
+        await message.reply("Ошибка: нельзя снять варны пользователю с равным или более высоким рангом")
+        return
+    users = chat_data.get("users", {})
+    if target_id not in users or users[target_id].get("warns", 0) == 0:
+        await message.reply("Ошибка: у пользователя отсутствуют варны")
+        return
+    users[target_id]["warns"] = 0
+    await save_chat(chat_id, chat_data)
+    await message.reply(f"**Все варны {target_name} отозваны**", parse_mode="MarkdownV2")
