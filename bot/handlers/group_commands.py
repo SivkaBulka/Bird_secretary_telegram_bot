@@ -1,3 +1,4 @@
+# bot/handlers/group_commands.py
 import re
 import time
 from datetime import datetime, timedelta
@@ -15,7 +16,7 @@ from ..filters.bot_rights import BotHasRights
 router = Router()
 router.message.filter(GroupChatFilter(), BotHasRights())  # все команды в группе требуют прав бота
 
-# ---------- Вспомогательные функции для команд ----------
+# ---------- Вспомогательные функции ----------
 async def get_user_id_by_username(bot: Bot, chat_id: int, username: str):
     try:
         member = await bot.get_chat_member(chat_id, f"@{username}")
@@ -38,11 +39,9 @@ async def update_creator(bot: Bot, chat_id: str, chat_data: dict):
         if not api_creator:
             return
         users = chat_data.setdefault("users", {})
-        # Понижаем старого создателя, если он не совпадает
         for uid, data in users.items():
             if data.get("rank") == "#" and uid != api_creator:
                 data["rank"] = "****"
-        # Устанавливаем нового создателя
         if api_creator not in users:
             users[api_creator] = {"rank": "#", "warns": 0, "blocked_until": None, "msg_total": 0, "msg_last_30d": 0, "msg_last_7d": 0, "last_msg_date": ""}
         else:
@@ -79,16 +78,17 @@ def can_up(caller_rank: str, target_rank: str, variant: int) -> bool:
     _, limit = RIGHT_OPTIONS[variant]
     caller_idx = RANK_ORDER.index(caller_rank)
     target_idx = RANK_ORDER.index(target_rank)
-    if target_idx >= caller_idx - (0 if limit == "мсу" else 1):
-        return False
-    return True
+    if limit == "мунс":
+        # максимум на один ниже своего
+        return target_idx < caller_idx - 1
+    else:  # мсу
+        # максимум свой уровень (можно повысить до своего ранга, но не выше)
+        return target_idx < caller_idx
 
 def can_down(caller_rank: str, target_rank: str) -> bool:
-    # Вызывающий должен быть строго выше
     return RANK_ORDER.index(caller_rank) > RANK_ORDER.index(target_rank)
 
 def can_warn(caller_rank: str, target_rank: str) -> bool:
-    # Нельзя себе, нельзя выше или равно
     return RANK_ORDER.index(caller_rank) > RANK_ORDER.index(target_rank)
 
 def parse_block_time(time_str: str, tz_offset: int):
@@ -106,8 +106,7 @@ def parse_block_time(time_str: str, tz_offset: int):
     except:
         return None, "Ошибка: синтаксис времени, укажите в формате XX.XX.XX XX.XX"
 
-# ---------- Команды ----------
-
+# ---------- /help ----------
 @router.message(Command("help"))
 async def help_command(message: Message):
     short_text = (
@@ -135,7 +134,6 @@ async def help_command(message: Message):
 
 @router.callback_query(F.data == "help_expand")
 async def help_expand(callback: CallbackQuery):
-    # проверка, что нажал тот же пользователь
     if callback.from_user.id != callback.message.reply_to_message.from_user.id:
         await callback.answer(f"Взаимодействовать может только {callback.message.reply_to_message.from_user.first_name}", show_alert=True)
         return
@@ -198,7 +196,6 @@ async def help_collapse(callback: CallbackQuery):
     await callback.message.edit_text(short_text, reply_markup=keyboard)
     await callback.answer()
 
-# Команда /user (сокращённо, остальные команды аналогично – из-за лимита я напишу только ключевые, но для полного кода нужно продолжение. Продолжу следующим сообщением)
 # ---------- /user ----------
 @router.message(Command("user"))
 async def user_command(message: Message, bot: Bot):
@@ -470,17 +467,8 @@ async def del_all_warn_command(message: Message, bot: Bot):
     users[target_id]["warns"] = 0
     await save_chat(chat_id, chat_data)
     await message.reply(f"**Все варны {target_name} отозваны**", parse_mode="MarkdownV2")
-    @router.message(Command("setting"))
-async def setting_command(message: Message):
-    chat_id = str(message.chat.id)
-    chat_data = await get_chat(chat_id)
-    caller_rank = get_user_rank(chat_data, str(message.from_user.id))
-    if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("****"):
-        await message.reply("Ошибка: недостаточно прав")
-        return
-    # вызов главного меню настроек
-    await setting_main(message)  # но setting_main – это колбэк, нужно переделать. Лучше создать функцию show_settings
-    # ---------- /block ----------
+
+# ---------- /block ----------
 @router.message(Command("block"))
 async def block_command(message: Message, bot: Bot):
     chat_id = str(message.chat.id)
@@ -589,7 +577,7 @@ async def del_block_command(message: Message, bot: Bot):
     await save_chat(chat_id, chat_data)
     await message.reply(f"**Блокировка {target_name} снята**", parse_mode="MarkdownV2")
 
-# ---------- /list_word (пагинация вынесена в callbacks, здесь только команда) ----------
+# ---------- /list_word (команда отправляет первую страницу) ----------
 @router.message(Command("list_word"))
 async def list_word_command(message: Message):
     chat_id = str(message.chat.id)
@@ -604,10 +592,41 @@ async def list_word_command(message: Message):
     if not words:
         await message.reply("**Чёрный список слов пуст**", parse_mode="MarkdownV2")
         return
-    # Показываем первую страницу (вызываем колбэк для унификации)
-    # Просто отправляем сообщение с кнопками
-    from ..callbacks import show_list_word_page
+    # Вызываем функцию показа первой страницы (определена в callbacks, но для избежания циклического импорта
+    # просто реализуем здесь локальную функцию)
     await show_list_word_page(message, chat_id, 1)
+
+async def show_list_word_page(target, chat_id: str, page: int):
+    """Отправляет или редактирует сообщение со страницей чёрного списка (дубль из callbacks)"""
+    chat_data = await get_chat(chat_id)
+    words = chat_data.get("words", [])
+    items_per_page = 32
+    total_pages = max(1, (len(words) + items_per_page - 1) // items_per_page) if words else 1
+    if page < 1:
+        page = 1
+    if page > total_pages:
+        page = total_pages
+    start = (page - 1) * items_per_page
+    end = start + items_per_page
+    page_words = words[start:end]
+    text = f"**Чёрный список слов, страница {page}/{total_pages}:**\n"
+    if page_words:
+        text += "\n".join(f"• {w}" for w in page_words)
+    else:
+        text += "• Список пуст"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    if total_pages > 1:
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton(text="<", callback_data=f"listword_page|{chat_id}|{page-1}"))
+        if page < total_pages:
+            nav_buttons.append(InlineKeyboardButton(text=">", callback_data=f"listword_page|{chat_id}|{page+1}"))
+        if nav_buttons:
+            keyboard.inline_keyboard.append(nav_buttons)
+    if hasattr(target, 'edit_text'):
+        await target.edit_text(text, parse_mode="MarkdownV2", reply_markup=keyboard)
+    else:
+        await target.reply(text, parse_mode="MarkdownV2", reply_markup=keyboard)
 
 # ---------- /add_word ----------
 @router.message(Command("add_word"))
@@ -694,8 +713,6 @@ async def setting_command(message: Message):
         return
     # Вызываем главное меню настроек (функция из callbacks)
     from ..callbacks import setting_main
-    # Имитируем callback, чтобы использовать ту же логику
-    # Создадим объект-заглушку с нужными полями
     class FakeCallback:
         def __init__(self, message):
             self.message = message
