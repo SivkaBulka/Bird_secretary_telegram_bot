@@ -1,4 +1,3 @@
-# bot/main.py
 import asyncio
 import os
 from aiohttp import web
@@ -6,16 +5,12 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-# В самом верху после других импортов
-from .handlers import events
 
 from .config import BOT_TOKEN
-from .handlers import group_commands, private_commands, callbacks, message_filter
+from .handlers import group_commands, private_commands, callbacks, message_filter, events
 from .middlewares.error_handler import ErrorHandlerMiddleware
-# После регистрации остальных роутеров
-dp.include_router(events.router)
 
-# Инициализация бота
+# Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2))
 dp = Dispatcher(storage=MemoryStorage())
 
@@ -28,8 +23,9 @@ dp.include_router(group_commands.router)
 dp.include_router(private_commands.router)
 dp.include_router(callbacks.router)
 dp.include_router(message_filter.router)
+dp.include_router(events.router)
 
-# Веб-сервер для пинга (aiohttp)
+# Веб-сервер для пинга
 async def handle_ping(request):
     return web.Response(text="OK")
 
@@ -46,13 +42,10 @@ async def start_web_server():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     print(f"Web server started on port {port}")
-    # бесконечное ожидание
     await asyncio.Event().wait()
 
 async def main():
-    # Запускаем веб-сервер в отдельной задаче
     web_task = asyncio.create_task(start_web_server())
-    # Запускаем бота (поллинг)
     await dp.start_polling(bot)
     await web_task
 
