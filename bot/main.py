@@ -1,17 +1,7 @@
-import sys
-import traceback
-
-print("Starting bot...")
-print("Python version:", sys.version)
-print("Current directory:", sys.path)
-try:
-    # остальной код main.py
-except Exception as e:
-    print("FATAL ERROR:")
-    traceback.print_exc()
-    sys.exit(1)
 import asyncio
 import os
+import sys
+import traceback
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -22,15 +12,23 @@ from .config import BOT_TOKEN
 from .handlers import group_commands, private_commands, callbacks, message_filter, events
 from .middlewares.error_handler import ErrorHandlerMiddleware
 
-# Инициализация бота и диспетчера
+print("Starting bot...")
+print("Python version:", sys.version)
+
+# Проверка токена
+if not BOT_TOKEN:
+    print("FATAL: BOT_TOKEN not set")
+    sys.exit(1)
+
+# Инициализация
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2))
 dp = Dispatcher(storage=MemoryStorage())
 
-# Подключаем middleware для глобальной обработки ошибок
+# Middleware
 dp.message.middleware(ErrorHandlerMiddleware())
 dp.callback_query.middleware(ErrorHandlerMiddleware())
 
-# Подключаем роутеры хендлеров
+# Подключение роутеров
 dp.include_router(group_commands.router)
 dp.include_router(private_commands.router)
 dp.include_router(callbacks.router)
@@ -62,4 +60,9 @@ async def main():
     await web_task
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print("FATAL ERROR:")
+        traceback.print_exc()
+        sys.exit(1)
