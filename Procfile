@@ -1,1 +1,1 @@
-web: PYTHONPATH=. python -m bot.main
+web: python -m bot.main
