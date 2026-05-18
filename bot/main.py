@@ -1,3 +1,15 @@
+import sys
+import traceback
+
+print("Starting bot...")
+print("Python version:", sys.version)
+print("Current directory:", sys.path)
+try:
+    # остальной код main.py
+except Exception as e:
+    print("FATAL ERROR:")
+    traceback.print_exc()
+    sys.exit(1)
 import asyncio
 import os
 from aiohttp import web
