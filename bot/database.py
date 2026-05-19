@@ -28,8 +28,8 @@ async def get_chat(chat_id: str) -> Dict[str, Any]:
             "init": False
         }
         await save_data(data)
-    # гарантируем наличие всех ключей даже для старых данных
     chat = data[chat_id]
+    # гарантия наличия ключей
     chat.setdefault("settings", get_default_settings())
     chat.setdefault("words", [])
     chat.setdefault("users", {})
