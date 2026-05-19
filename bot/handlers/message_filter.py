@@ -6,7 +6,8 @@ from aiogram import Router, Bot, F
 from aiogram.types import Message
 from aiogram.exceptions import TelegramBadRequest
 
-from ..database import get_chat, save_chat, delete_user, get_default_settings
+from ..database import get_chat, save_chat, delete_user
+from ..config import get_default_settings
 from ..utils import normalize_text, build_pattern, escape_markdown
 from ..config import RANK_ORDER
 
