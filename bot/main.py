@@ -33,7 +33,7 @@ dp.include_router(group_commands.router)
 dp.include_router(private_commands.router)
 dp.include_router(callbacks.router)
 dp.include_router(message_filter.router)
-dp.include_router(events.router)
+# dp.include_router(events.router)
 
 # Веб-сервер для пинга
 async def handle_ping(request):
