@@ -19,7 +19,7 @@ if not BOT_TOKEN:
     print("FATAL: BOT_TOKEN not set")
     sys.exit(1)
 
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2))
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 
 dp.message.middleware(ErrorHandlerMiddleware())
