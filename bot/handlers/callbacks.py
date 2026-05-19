@@ -12,10 +12,7 @@ from .private_commands import common_chats_keyboard
 
 router = Router()
 
-# ... дальше весь остальной код (setting_main, set_toggle_listword и т.д.)
-
 # ---------- НАСТРОЙКИ (/setting) ----------
-@router.callback_query(F.data == "setting_main")
 async def setting_main(callback: CallbackQuery):
     chat_id = str(callback.message.chat.id)
     chat_data = await get_chat(chat_id)
@@ -82,7 +79,6 @@ async def set_rights_menu(callback: CallbackQuery):
         if i == variant:
             label = "🔴 " + label
         buttons.append(InlineKeyboardButton(text=label, callback_data=f"set_rights_set|{i}"))
-    # разбиваем на строки по 2 кнопки
     rows = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
     rows.append([InlineKeyboardButton(text="← Назад", callback_data="setting_main")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
@@ -158,9 +154,9 @@ async def set_filter_set(callback: CallbackQuery):
     filter_text = {"off": "Off", "del_warn": "Del & Warn", "only_del": "Only Del", "only_warn": "Only Warn"}[f_val]
     await callback.answer(f"Режим {filter_text} установлен")
     await setting_main(callback)
+
 # ---------- Пагинация для /list_word ----------
 async def show_list_word_page(target, chat_id: str, page: int):
-    """Отправляет или редактирует сообщение со страницей чёрного списка"""
     chat_data = await get_chat(chat_id)
     words = chat_data.get("words", [])
     items_per_page = 32
@@ -196,10 +192,9 @@ async def listword_page_callback(callback: CallbackQuery):
     _, chat_id, page_str = callback.data.split("|")
     page = int(page_str)
     chat_data = await get_chat(chat_id)
-    # Проверка прав доступа к листворду (на всякий случай)
     settings = chat_data["settings"]
     access = settings.get("list_word_access", "***")
-    caller_rank = get_user_rank(chat_data, str(callback.from_user.id))
+    caller_rank = chat_data.get("users", {}).get(str(callback.from_user.id), {}).get("rank", "$")
     if access != "$" and RANK_ORDER.index(caller_rank) < RANK_ORDER.index("***"):
         await callback.answer("Недостаточно прав", show_alert=True)
         return
@@ -207,15 +202,8 @@ async def listword_page_callback(callback: CallbackQuery):
     await callback.answer()
 
 # ---------- Анонимные сообщения (FSM) ----------
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.memory import MemoryStorage
-
 class AnonStates(StatesGroup):
-    waiting_for_chat = State()  # ожидание выбора чата после ввода текста
-
-# Переопределим /anonim через колбэк, но лучше добавим хендлер в private_commands.
-# Для простоты добавим сюда функцию, которая будет вызвана из private_commands.
+    waiting_for_chat = State()
 
 async def anonim_start(message: Message, bot: Bot, state: FSMContext):
     parts = message.text.split(maxsplit=1)
@@ -223,9 +211,7 @@ async def anonim_start(message: Message, bot: Bot, state: FSMContext):
         await message.reply("Ошибка: неверный формат сообщения\nИспользуйте: /anonim текст сообщения")
         return
     text = parts[1]
-    # Сохраняем текст в состояние
     await state.update_data(anon_text=text)
-    # Показываем список чатов
     keyboard = await common_chats_keyboard(message.from_user.id, bot, for_anon=True)
     if not keyboard.inline_keyboard:
         await message.reply("Нет общих чатов с включённым анонимным режимом")
@@ -243,7 +229,6 @@ async def anon_confirm_callback(callback: CallbackQuery, state: FSMContext, bot:
         await callback.answer("Ошибка: текст сообщения утерян", show_alert=True)
         await state.clear()
         return
-    # Показываем подтверждение
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Да", callback_data=f"anon_send|{chat_id}"),
          InlineKeyboardButton(text="❌ Отмена", callback_data="anon_cancel")]
@@ -254,7 +239,6 @@ async def anon_confirm_callback(callback: CallbackQuery, state: FSMContext, bot:
         reply_markup=keyboard
     )
     await callback.answer()
-    # Состояние не меняем, будет дальше
 
 @router.callback_query(F.data.startswith("anon_send|"))
 async def anon_send_callback(callback: CallbackQuery, state: FSMContext, bot: Bot):
@@ -275,7 +259,3 @@ async def anon_cancel_callback(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("Отправка отменена")
     await callback.answer()
     await state.clear()
-
-# Вспомогательная функция для получения клавиатуры общих чатов (используется и в menu, и в anonim)
-# Она уже определена в private_commands.py, но для доступа из callbacks импортируем её
-from .private_commands import common_chats_keyboard
