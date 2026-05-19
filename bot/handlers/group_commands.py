@@ -1,4 +1,3 @@
-# bot/handlers/group_commands.py
 import re
 import time
 from datetime import datetime, timedelta
@@ -12,9 +11,10 @@ from ..utils import normalize_text, build_pattern, escape_markdown, get_user_men
 from ..config import RANK_ORDER, RANK_NAMES, RIGHT_OPTIONS, UTC_OFFSETS
 from ..filters.chat_type import GroupChatFilter
 from ..filters.bot_rights import BotHasRights
+from ..callbacks import show_list_word_page, setting_main
 
 router = Router()
-router.message.filter(GroupChatFilter(), BotHasRights())  # все команды в группе требуют прав бота
+router.message.filter(GroupChatFilter(), BotHasRights())
 
 # ---------- Вспомогательные функции ----------
 async def get_user_id_by_username(bot: Bot, chat_id: int, username: str):
@@ -28,7 +28,6 @@ def get_user_rank(chat_data: dict, user_id: str) -> str:
     return chat_data.get("users", {}).get(user_id, {}).get("rank", "$")
 
 async def update_creator(bot: Bot, chat_id: str, chat_data: dict):
-    """Синхронизирует создателя чата с API"""
     try:
         admins = await bot.get_chat_administrators(int(chat_id))
         api_creator = None
@@ -50,7 +49,6 @@ async def update_creator(bot: Bot, chat_id: str, chat_data: dict):
         pass
 
 async def extract_target(message: Message, bot: Bot):
-    """Возвращает (user_id, username_or_name, user_rank) из reply или аргумента"""
     chat_id = message.chat.id
     chat_data = await get_chat(str(chat_id))
     if message.reply_to_message:
@@ -79,10 +77,8 @@ def can_up(caller_rank: str, target_rank: str, variant: int) -> bool:
     caller_idx = RANK_ORDER.index(caller_rank)
     target_idx = RANK_ORDER.index(target_rank)
     if limit == "мунс":
-        # максимум на один ниже своего
         return target_idx < caller_idx - 1
-    else:  # мсу
-        # максимум свой уровень (можно повысить до своего ранга, но не выше)
+    else:
         return target_idx < caller_idx
 
 def can_down(caller_rank: str, target_rank: str) -> bool:
@@ -577,7 +573,7 @@ async def del_block_command(message: Message, bot: Bot):
     await save_chat(chat_id, chat_data)
     await message.reply(f"**Блокировка {target_name} снята**", parse_mode="MarkdownV2")
 
-# ---------- /list_word (команда отправляет первую страницу) ----------
+# ---------- /list_word ----------
 @router.message(Command("list_word"))
 async def list_word_command(message: Message):
     chat_id = str(message.chat.id)
@@ -592,41 +588,7 @@ async def list_word_command(message: Message):
     if not words:
         await message.reply("**Чёрный список слов пуст**", parse_mode="MarkdownV2")
         return
-    # Вызываем функцию показа первой страницы (определена в callbacks, но для избежания циклического импорта
-    # просто реализуем здесь локальную функцию)
     await show_list_word_page(message, chat_id, 1)
-
-async def show_list_word_page(target, chat_id: str, page: int):
-    """Отправляет или редактирует сообщение со страницей чёрного списка (дубль из callbacks)"""
-    chat_data = await get_chat(chat_id)
-    words = chat_data.get("words", [])
-    items_per_page = 32
-    total_pages = max(1, (len(words) + items_per_page - 1) // items_per_page) if words else 1
-    if page < 1:
-        page = 1
-    if page > total_pages:
-        page = total_pages
-    start = (page - 1) * items_per_page
-    end = start + items_per_page
-    page_words = words[start:end]
-    text = f"**Чёрный список слов, страница {page}/{total_pages}:**\n"
-    if page_words:
-        text += "\n".join(f"• {w}" for w in page_words)
-    else:
-        text += "• Список пуст"
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
-    if total_pages > 1:
-        nav_buttons = []
-        if page > 1:
-            nav_buttons.append(InlineKeyboardButton(text="<", callback_data=f"listword_page|{chat_id}|{page-1}"))
-        if page < total_pages:
-            nav_buttons.append(InlineKeyboardButton(text=">", callback_data=f"listword_page|{chat_id}|{page+1}"))
-        if nav_buttons:
-            keyboard.inline_keyboard.append(nav_buttons)
-    if hasattr(target, 'edit_text'):
-        await target.edit_text(text, parse_mode="MarkdownV2", reply_markup=keyboard)
-    else:
-        await target.reply(text, parse_mode="MarkdownV2", reply_markup=keyboard)
 
 # ---------- /add_word ----------
 @router.message(Command("add_word"))
@@ -711,14 +673,11 @@ async def setting_command(message: Message):
     if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("****"):
         await message.reply("Ошибка: недостаточно прав")
         return
-    # Временно, чтобы избежать циклического импорта:
-    await message.reply("Настройки временно недоступны. Ведутся технические работы.")
-    # from ..callbacks import setting_main
-    # class FakeCallback:
-    #     def __init__(self, message):
-    #         self.message = message
-    #         self.from_user = message.from_user
-    #     async def answer(self, text=None, show_alert=False):
-    #         pass
-    # fake = FakeCallback(message)
-    # await setting_main(fake)
+    class FakeCallback:
+        def __init__(self, message):
+            self.message = message
+            self.from_user = message.from_user
+        async def answer(self, text=None, show_alert=False):
+            pass
+    fake = FakeCallback(message)
+    await setting_main(fake)
