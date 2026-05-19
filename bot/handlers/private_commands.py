@@ -4,14 +4,18 @@ from aiogram import Router, Bot, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from ..database import get_chat, get_default_settings, load_data
 from ..utils import escape_markdown
 from ..config import RANK_ORDER, RANK_NAMES
 from ..filters.chat_type import PrivateChatFilter
-from ..callbacks import anonim_start
 
 router = Router()
 router.message.filter(PrivateChatFilter())
+
+# ---------- FSM для анонимных сообщений ----------
+class AnonStates(StatesGroup):
+    waiting_for_chat = State()
 
 # ---------- /start ----------
 @router.message(Command("start"))
@@ -173,7 +177,64 @@ async def menu_back_callback(callback: CallbackQuery, bot: Bot):
         await callback.message.edit_text("Выберите чат:", reply_markup=keyboard)
     await callback.answer()
 
-# ---------- /anonim ----------
+# ---------- /anonim (полностью реализован здесь) ----------
 @router.message(Command("anonim"))
 async def anonim_command(message: Message, bot: Bot, state: FSMContext):
-    await anonim_start(message, bot, state)
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply("Ошибка: неверный формат сообщения\nИспользуйте: /anonim текст сообщения")
+        return
+    text = parts[1]
+    await state.update_data(anon_text=text)
+    keyboard = await common_chats_keyboard(message.from_user.id, bot, for_anon=True)
+    if not keyboard.inline_keyboard:
+        await message.reply("Нет общих чатов с включённым анонимным режимом")
+        await state.clear()
+        return
+    await message.reply("Выберите чат для анонимного сообщения:", reply_markup=keyboard)
+    await state.set_state(AnonStates.waiting_for_chat)
+
+@router.callback_query(AnonStates.waiting_for_chat, F.data.startswith("anon_confirm|"))
+async def anon_confirm_callback(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    _, chat_id = callback.data.split("|")
+    user_data = await state.get_data()
+    text = user_data.get("anon_text")
+    if not text:
+        await callback.answer("Ошибка: текст сообщения утерян", show_alert=True)
+        await state.clear()
+        return
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да", callback_data=f"anon_send|{chat_id}"),
+         InlineKeyboardButton(text="❌ Отмена", callback_data="anon_cancel")]
+    ])
+    await callback.message.edit_text(
+        f"**Вы действительно хотите отправить в чат анонимное сообщение?**\n{escape_markdown(text[:200])}",
+        parse_mode="MarkdownV2",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("anon_send|"))
+async def anon_send_callback(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    _, chat_id = callback.data.split("|")
+    user_data = await state.get_data()
+    text = user_data.get("anon_text")
+    if not text:
+        await callback.answer("Ошибка", show_alert=True)
+        await state.clear()
+        return
+    await bot.send_message(int(chat_id), f"**Новое анонимное сообщение**\n{text}", parse_mode="MarkdownV2")
+    await callback.message.edit_text("✅ Сообщение отправлено")
+    await callback.answer()
+    await state.clear()
+
+@router.callback_query(F.data == "anon_cancel")
+async def anon_cancel_callback(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Отправка отменена")
+    await callback.answer()
+    await state.clear()
+
+@router.callback_query(F.data.startswith("anon_denied|"))
+async def anon_denied(callback: CallbackQuery):
+    chat_title = callback.data.split("|")[1]
+    await callback.answer(f"Функция недоступна в {chat_title}", show_alert=True)
