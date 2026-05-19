@@ -70,3 +70,12 @@ NORMALIZE_DICT = {
     'ю': ['ю'],
     'я': ['я']
 }
+def get_default_settings():
+    return {
+        "updown_rights": "1",
+        "list_word_access": "***",
+        "filter_mode": "off",
+        "timezone": "+3",
+        "search_mode": "substring",
+        "anonymous": "off"
+    }
