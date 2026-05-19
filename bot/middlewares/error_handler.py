@@ -3,7 +3,6 @@ from aiogram.types import Message, CallbackQuery
 from typing import Callable, Dict, Any, Awaitable
 
 class ErrorHandlerMiddleware(BaseMiddleware):
-    """Глобальный перехват ошибок – если что-то пошло не так, отвечаем 'Ошибка: ошибка'"""
     async def __call__(
         self,
         handler: Callable[[Message, Dict[str, Any]], Awaitable[Any]],
