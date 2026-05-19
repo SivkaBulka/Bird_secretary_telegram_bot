@@ -11,7 +11,7 @@ from ..utils import normalize_text, build_pattern, escape_markdown, get_user_men
 from ..config import RANK_ORDER, RANK_NAMES, RIGHT_OPTIONS, UTC_OFFSETS
 from ..filters.chat_type import GroupChatFilter
 from ..filters.bot_rights import BotHasRights
-from ..callbacks import show_list_word_page, setting_main
+from .callbacks import show_list_word_page, setting_main
 
 router = Router()
 router.message.filter(GroupChatFilter(), BotHasRights())
