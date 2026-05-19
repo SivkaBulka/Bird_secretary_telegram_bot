@@ -5,7 +5,8 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from ..database import get_chat, get_default_settings, load_data
+from ..database import get_chat, load_data
+from ..config import get_default_settings
 from ..utils import escape_markdown
 from ..config import RANK_ORDER, RANK_NAMES
 from ..filters.chat_type import PrivateChatFilter
