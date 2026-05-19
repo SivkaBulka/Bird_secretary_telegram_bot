@@ -6,7 +6,8 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest
 
-from ..database import get_chat, save_chat, get_default_settings
+from ..database import get_chat, save_chat
+from ..config import get_default_settings
 from ..utils import normalize_text, build_pattern, escape_markdown, get_user_mention
 from ..config import RANK_ORDER, RANK_NAMES, RIGHT_OPTIONS, UTC_OFFSETS
 from ..filters.chat_type import GroupChatFilter
