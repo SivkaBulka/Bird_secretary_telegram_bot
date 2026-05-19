@@ -711,13 +711,14 @@ async def setting_command(message: Message):
     if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("****"):
         await message.reply("Ошибка: недостаточно прав")
         return
-    # Вызываем главное меню настроек (функция из callbacks)
-    from ..callbacks import setting_main
-    class FakeCallback:
-        def __init__(self, message):
-            self.message = message
-            self.from_user = message.from_user
-        async def answer(self, text=None, show_alert=False):
-            pass
-    fake = FakeCallback(message)
-    await setting_main(fake)
+    # Временно, чтобы избежать циклического импорта:
+    await message.reply("Настройки временно недоступны. Ведутся технические работы.")
+    # from ..callbacks import setting_main
+    # class FakeCallback:
+    #     def __init__(self, message):
+    #         self.message = message
+    #         self.from_user = message.from_user
+    #     async def answer(self, text=None, show_alert=False):
+    #         pass
+    # fake = FakeCallback(message)
+    # await setting_main(fake)
