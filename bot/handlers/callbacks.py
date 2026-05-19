@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 from aiogram import Router, Bot, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-from ..database import get_chat, save_chat, get_default_settings
+from ..database import get_chat, save_chat
+from ..config import get_default_settings
 from ..utils import escape_markdown
 from ..config import RANK_ORDER, RIGHT_OPTIONS, UTC_OFFSETS
 
