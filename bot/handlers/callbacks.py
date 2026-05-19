@@ -1,16 +1,18 @@
-# bot/handlers/callbacks.py
 import time
 from datetime import datetime, timedelta
 from aiogram import Router, Bot, F
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 from ..database import get_chat, save_chat, get_default_settings
 from ..utils import escape_markdown
 from ..config import RANK_ORDER, RIGHT_OPTIONS, UTC_OFFSETS
-from .private_commands import common_chats_keyboard  # импорт для /menu и /anonim
+from .private_commands import common_chats_keyboard
 
 router = Router()
+
+# ... дальше весь остальной код (setting_main, set_toggle_listword и т.д.)
 
 # ---------- НАСТРОЙКИ (/setting) ----------
 @router.callback_query(F.data == "setting_main")
