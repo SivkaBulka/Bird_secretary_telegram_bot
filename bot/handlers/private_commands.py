@@ -1,13 +1,14 @@
-# bot/handlers/private_commands.py
+import time
+from datetime import datetime, timedelta
 from aiogram import Router, Bot, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
 from ..database import get_chat, get_default_settings, load_data
 from ..utils import escape_markdown
 from ..config import RANK_ORDER, RANK_NAMES
 from ..filters.chat_type import PrivateChatFilter
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
+from ..callbacks import anonim_start
 
 router = Router()
 router.message.filter(PrivateChatFilter())
@@ -17,9 +18,8 @@ router.message.filter(PrivateChatFilter())
 async def start_private(message: Message):
     await message.reply("**Бот готов к работе!**\nЗдесь вы можете использовать команды /menu и /anonim", parse_mode="MarkdownV2")
 
-# ---------- /menu ----------
+# ---------- Общая клавиатура общих чатов ----------
 async def common_chats_keyboard(user_id: int, bot: Bot, for_anon: bool = False):
-    """Возвращает клавиатуру со списком общих чатов, где бот имеет данные"""
     all_data = await load_data()
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
     for chat_id_str, chat_data in all_data.items():
@@ -35,10 +35,10 @@ async def common_chats_keyboard(user_id: int, bot: Bot, for_anon: bool = False):
                 keyboard.inline_keyboard.append([InlineKeyboardButton(text=title, callback_data=callback)])
         except:
             continue
-    # сортировка по названию чата
     keyboard.inline_keyboard.sort(key=lambda x: x[0].text.lower())
     return keyboard
 
+# ---------- /menu ----------
 @router.message(Command("menu"))
 async def menu_command(message: Message, bot: Bot):
     user_id = message.from_user.id
@@ -176,5 +176,4 @@ async def menu_back_callback(callback: CallbackQuery, bot: Bot):
 # ---------- /anonim ----------
 @router.message(Command("anonim"))
 async def anonim_command(message: Message, bot: Bot, state: FSMContext):
-    from ..callbacks import anonim_start
     await anonim_start(message, bot, state)
