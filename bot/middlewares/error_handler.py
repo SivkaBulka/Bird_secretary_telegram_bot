@@ -1,3 +1,4 @@
+import traceback
 from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
 from typing import Callable, Dict, Any, Awaitable
@@ -12,7 +13,8 @@ class ErrorHandlerMiddleware(BaseMiddleware):
         try:
             return await handler(event, data)
         except Exception as e:
-            print(f"Unhandled error: {e}")
+            print("Unhandled error:", e)
+            traceback.print_exc()
             if isinstance(event, Message):
                 await event.answer("Ошибка: ошибка")
             elif isinstance(event, CallbackQuery):
