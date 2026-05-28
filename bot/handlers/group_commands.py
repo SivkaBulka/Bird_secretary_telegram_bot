@@ -43,12 +43,15 @@ async def update_creator(bot: Bot, chat_id: str, chat_data: dict):
             if data.get("rank") == "#" and uid != api_creator:
                 data["rank"] = "****"
         if api_creator not in users:
-            users[api_creator] = {"rank": "#", "warns": 0, "blocked_until": None, "msg_total": 0, "msg_last_30d": 0, "msg_last_7d": 0, "last_msg_date": ""}
+            users[api_creator] = {
+                "rank": "#", "warns": 0, "blocked_until": None,
+                "msg_total": 0, "msg_last_30d": 0, "msg_last_7d": 0, "last_msg_date": ""
+            }
         else:
             users[api_creator]["rank"] = "#"
-    except:
-        pass
-
+        await save_chat(chat_id, chat_data)
+    except Exception as e:
+        print(f"update_creator error: {e}")
 async def extract_target(message: Message, bot: Bot):
     chat_id = message.chat.id
     chat_data = await get_chat(str(chat_id))
@@ -250,7 +253,7 @@ async def chat_command(message: Message):
     search_mode = "подстрока" if settings.get("search_mode") == "substring" else "точное совпадение"
     tz = settings.get("timezone", "+3")
     lines = [
-        "**Статистика чата**",
+        "<b>Статистика чата</b>",
         f"• Всего сообщений: {total_msgs}",
         f"• Сообщений за 30 дней: {msgs_30d}",
         f"• Сообщений за 7 дней: {msgs_7d}",
@@ -263,7 +266,7 @@ async def chat_command(message: Message):
         f"• Тип фильтра: {search_mode}",
         f"• Часовой пояс: UTC{tz}"
     ]
-    await message.reply("\n".join(lines), parse_mode="MarkdownV2")
+    await message.reply("\n".join(lines), parse_mode="HTML")
 
 # ---------- /ranks ----------
 @router.message(Command("ranks"))
@@ -682,3 +685,36 @@ async def setting_command(message: Message):
             pass
     fake = FakeCallback(message)
     await setting_main(fake)
+@router.message(Command("debug"))
+async def debug_command(message: Message, bot: Bot):
+    chat_id = str(message.chat.id)
+    chat_data = await get_chat(chat_id)
+    try:
+        admins = await bot.get_chat_administrators(message.chat.id)
+        api_creator = None
+        creator_name = None
+        for admin in admins:
+            if admin.status == "creator":
+                api_creator = admin.user.id
+                creator_name = admin.user.username or admin.user.first_name
+                break
+        if api_creator:
+            creator_info = f"{api_creator} (@{creator_name})"
+        else:
+            creator_info = "не найден"
+    except Exception as e:
+        creator_info = f"ошибка: {e}"
+    local_creator = None
+    for uid, data in chat_data.get("users", {}).items():
+        if data.get("rank") == "#":
+            local_creator = uid
+            break
+    bot_member = await bot.get_chat_member(message.chat.id, bot.id)
+    bot_rights = f"{bot_member.status}, can_restrict={bot_member.can_restrict_members}, can_delete={bot_member.can_delete_messages}"
+    await message.reply(
+        f"<b>Отладка</b>\n"
+        f"API создатель: {creator_info}\n"
+        f"Локальный создатель: {local_creator}\n"
+        f"Права бота: {bot_rights}",
+        parse_mode="HTML"
+    )
