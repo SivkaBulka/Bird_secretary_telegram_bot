@@ -1,18 +1,15 @@
 import time
 from datetime import datetime, timedelta
 from aiogram import Router, Bot, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, InlineKeyboardButtonStyle
 from ..database import get_chat, save_chat
-from ..config import get_default_settings
+from ..config import get_default_settings, RANK_ORDER, RIGHT_OPTIONS, UTC_OFFSETS
 from ..utils import escape_markdown
-from ..config import RANK_ORDER, RIGHT_OPTIONS, UTC_OFFSETS
 
 router = Router()
 
-# ---------- НАСТРОЙКИ (/setting) ----------
-async def setting_main(callback: CallbackQuery):
-    chat_id = str(callback.message.chat.id)
+# ---------- НАСТРОЙКИ (отправляются новым сообщением, чтобы не было ошибок редактирования) ----------
+async def send_settings_menu(message, chat_id: str):
     chat_data = await get_chat(chat_id)
     settings = chat_data["settings"]
     list_word_access = settings.get("list_word_access", "***")
@@ -21,17 +18,26 @@ async def setting_main(callback: CallbackQuery):
     filter_mode = settings.get("filter_mode", "off")
     filter_text = {"off": "Off", "only_del": "Only Del", "only_warn": "Only Warn", "del_warn": "Del & Warn"}.get(filter_mode, "Off")
     tz = settings.get("timezone", "+3")
-    text = "**Настройки чата**"
+    text = "<b>Настройки чата</b>"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"Доступ /list_word {'$' if list_word_access == '$' else '***'}", callback_data="set_toggle_listword")],
-        [InlineKeyboardButton(text=f"Фильтр: {search_mode}", callback_data="set_toggle_search")],
-        [InlineKeyboardButton(text=f"Анонимный режим: {anon}", callback_data="set_toggle_anon")],
-        [InlineKeyboardButton(text="Права /up и /down", callback_data="set_rights_menu")],
-        [InlineKeyboardButton(text=f"Часовой пояс UTC{tz}", callback_data="set_tz_menu")],
-        [InlineKeyboardButton(text="Режим фильтра", callback_data="set_filter_menu")]
+        [InlineKeyboardButton(text=f"Доступ /list_word {'$' if list_word_access == '$' else '***'}", callback_data="set_toggle_listword", style=InlineKeyboardButtonStyle.SUCCESS)],
+        [InlineKeyboardButton(text=f"Фильтр: {search_mode}", callback_data="set_toggle_search", style=InlineKeyboardButtonStyle.SUCCESS)],
+        [InlineKeyboardButton(text=f"Анонимный режим: {anon}", callback_data="set_toggle_anon", style=InlineKeyboardButtonStyle.SUCCESS)],
+        [InlineKeyboardButton(text="Права /up и /down", callback_data="set_rights_menu", style=InlineKeyboardButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text=f"Часовой пояс UTC{tz}", callback_data="set_tz_menu", style=InlineKeyboardButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="Режим фильтра", callback_data="set_filter_menu", style=InlineKeyboardButtonStyle.PRIMARY)]
     ])
-    await callback.message.edit_text(text, parse_mode="MarkdownV2", reply_markup=keyboard)
+    await message.reply(text, parse_mode="HTML", reply_markup=keyboard)
+
+# команда /setting теперь вызывает эту функцию (импортируется в group_commands)
+async def setting_main(callback: CallbackQuery):
+    chat_id = str(callback.message.chat.id)
+    await send_settings_menu(callback.message, chat_id)
+    await callback.message.delete()  # удаляем старое сообщение с командой
     await callback.answer()
+
+# Остальные колбэки (переключения, меню прав, tz, фильтра) – без изменений, но parse_mode="HTML"
+# Для краткости повторю только ключевые:
 
 @router.callback_query(F.data == "set_toggle_listword")
 async def set_toggle_listword(callback: CallbackQuery):
@@ -42,7 +48,8 @@ async def set_toggle_listword(callback: CallbackQuery):
     chat_data["settings"]["list_word_access"] = new_val
     await save_chat(chat_id, chat_data)
     await callback.answer(f"Доступ /list_word {'для всех' if new_val == '$' else 'ограничен'}")
-    await setting_main(callback)
+    await send_settings_menu(callback.message, chat_id)
+    await callback.message.delete()
 
 @router.callback_query(F.data == "set_toggle_search")
 async def set_toggle_search(callback: CallbackQuery):
@@ -53,7 +60,8 @@ async def set_toggle_search(callback: CallbackQuery):
     chat_data["settings"]["search_mode"] = new_val
     await save_chat(chat_id, chat_data)
     await callback.answer(f"Режим фильтра: {'подстрока' if new_val == 'substring' else 'точное совпадение'}")
-    await setting_main(callback)
+    await send_settings_menu(callback.message, chat_id)
+    await callback.message.delete()
 
 @router.callback_query(F.data == "set_toggle_anon")
 async def set_toggle_anon(callback: CallbackQuery):
@@ -64,7 +72,8 @@ async def set_toggle_anon(callback: CallbackQuery):
     chat_data["settings"]["anonymous"] = new_val
     await save_chat(chat_id, chat_data)
     await callback.answer(f"Анонимный режим {'включён' if new_val == 'on' else 'выключен'}")
-    await setting_main(callback)
+    await send_settings_menu(callback.message, chat_id)
+    await callback.message.delete()
 
 @router.callback_query(F.data == "set_rights_menu")
 async def set_rights_menu(callback: CallbackQuery):
@@ -74,11 +83,10 @@ async def set_rights_menu(callback: CallbackQuery):
     buttons = []
     for i in range(1, 9):
         label = str(i)
-        if i == variant:
-            label = "🔴 " + label
-        buttons.append(InlineKeyboardButton(text=label, callback_data=f"set_rights_set|{i}"))
+        style = InlineKeyboardButtonStyle.DANGER if i == variant else InlineKeyboardButtonStyle.SUCCESS
+        buttons.append(InlineKeyboardButton(text=label, callback_data=f"set_rights_set|{i}", style=style))
     rows = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
-    rows.append([InlineKeyboardButton(text="← Назад", callback_data="setting_main")])
+    rows.append([InlineKeyboardButton(text="← Назад", callback_data="settings_back", style=InlineKeyboardButtonStyle.PRIMARY)])
     keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
     await callback.message.edit_text("Выберите вариант прав для /up и /down:", reply_markup=keyboard)
     await callback.answer()
@@ -92,7 +100,8 @@ async def set_rights_set(callback: CallbackQuery):
     chat_data["settings"]["updown_rights"] = str(variant)
     await save_chat(chat_id, chat_data)
     await callback.answer(f"Вариант {variant} установлен")
-    await setting_main(callback)
+    await send_settings_menu(callback.message, chat_id)
+    await callback.message.delete()
 
 @router.callback_query(F.data == "set_tz_menu")
 async def set_tz_menu(callback: CallbackQuery):
@@ -102,11 +111,10 @@ async def set_tz_menu(callback: CallbackQuery):
     buttons = []
     for tz in UTC_OFFSETS:
         label = f"UTC{tz}"
-        if tz == current.replace("UTC", "").replace("+", ""):
-            label = "🔴 " + label
-        buttons.append(InlineKeyboardButton(text=label, callback_data=f"set_tz_set|{tz}"))
+        style = InlineKeyboardButtonStyle.DANGER if tz == current.replace("UTC", "").replace("+", "") else InlineKeyboardButtonStyle.SUCCESS
+        buttons.append(InlineKeyboardButton(text=label, callback_data=f"set_tz_set|{tz}", style=style))
     rows = [buttons[i:i+3] for i in range(0, len(buttons), 3)]
-    rows.append([InlineKeyboardButton(text="← Назад", callback_data="setting_main")])
+    rows.append([InlineKeyboardButton(text="← Назад", callback_data="settings_back", style=InlineKeyboardButtonStyle.PRIMARY)])
     keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
     await callback.message.edit_text("Выберите часовой пояс:", reply_markup=keyboard)
     await callback.answer()
@@ -119,7 +127,8 @@ async def set_tz_set(callback: CallbackQuery):
     chat_data["settings"]["timezone"] = f"+{tz}" if not tz.startswith('-') else tz
     await save_chat(chat_id, chat_data)
     await callback.answer(f"Часовой пояс UTC{tz} установлен")
-    await setting_main(callback)
+    await send_settings_menu(callback.message, chat_id)
+    await callback.message.delete()
 
 @router.callback_query(F.data == "set_filter_menu")
 async def set_filter_menu(callback: CallbackQuery):
@@ -129,12 +138,10 @@ async def set_filter_menu(callback: CallbackQuery):
     filters = [("off", "Off"), ("del_warn", "Del & Warn"), ("only_del", "Only Del"), ("only_warn", "Only Warn")]
     buttons = []
     for f_val, f_text in filters:
-        label = f_text
-        if f_val == current:
-            label = "🔴 " + label
-        buttons.append(InlineKeyboardButton(text=label, callback_data=f"set_filter_set|{f_val}"))
+        style = InlineKeyboardButtonStyle.DANGER if f_val == current else InlineKeyboardButtonStyle.SUCCESS
+        buttons.append(InlineKeyboardButton(text=f_text, callback_data=f"set_filter_set|{f_val}", style=style))
     rows = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
-    rows.append([InlineKeyboardButton(text="← Назад", callback_data="setting_main")])
+    rows.append([InlineKeyboardButton(text="← Назад", callback_data="settings_back", style=InlineKeyboardButtonStyle.PRIMARY)])
     keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
     await callback.message.edit_text("Выберите режим фильтра:", reply_markup=keyboard)
     await callback.answer()
@@ -151,9 +158,17 @@ async def set_filter_set(callback: CallbackQuery):
     await save_chat(chat_id, chat_data)
     filter_text = {"off": "Off", "del_warn": "Del & Warn", "only_del": "Only Del", "only_warn": "Only Warn"}[f_val]
     await callback.answer(f"Режим {filter_text} установлен")
-    await setting_main(callback)
+    await send_settings_menu(callback.message, chat_id)
+    await callback.message.delete()
 
-# ---------- Пагинация для /list_word ----------
+@router.callback_query(F.data == "settings_back")
+async def settings_back(callback: CallbackQuery):
+    chat_id = str(callback.message.chat.id)
+    await send_settings_menu(callback.message, chat_id)
+    await callback.message.delete()
+    await callback.answer()
+
+# ---------- Пагинация для /list_word (с HTML) ----------
 async def show_list_word_page(target, chat_id: str, page: int):
     chat_data = await get_chat(chat_id)
     words = chat_data.get("words", [])
@@ -166,7 +181,7 @@ async def show_list_word_page(target, chat_id: str, page: int):
     start = (page - 1) * items_per_page
     end = start + items_per_page
     page_words = words[start:end]
-    text = f"**Чёрный список слов, страница {page}/{total_pages}:**\n"
+    text = f"<b>Чёрный список слов, страница {page}/{total_pages}:</b>\n"
     if page_words:
         text += "\n".join(f"• {w}" for w in page_words)
     else:
@@ -175,15 +190,15 @@ async def show_list_word_page(target, chat_id: str, page: int):
     if total_pages > 1:
         nav_buttons = []
         if page > 1:
-            nav_buttons.append(InlineKeyboardButton(text="<", callback_data=f"listword_page|{chat_id}|{page-1}"))
+            nav_buttons.append(InlineKeyboardButton(text="<", callback_data=f"listword_page|{chat_id}|{page-1}", style=InlineKeyboardButtonStyle.PRIMARY))
         if page < total_pages:
-            nav_buttons.append(InlineKeyboardButton(text=">", callback_data=f"listword_page|{chat_id}|{page+1}"))
+            nav_buttons.append(InlineKeyboardButton(text=">", callback_data=f"listword_page|{chat_id}|{page+1}", style=InlineKeyboardButtonStyle.PRIMARY))
         if nav_buttons:
             keyboard.inline_keyboard.append(nav_buttons)
     if hasattr(target, 'edit_text'):
-        await target.edit_text(text, parse_mode="MarkdownV2", reply_markup=keyboard)
+        await target.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
     else:
-        await target.reply(text, parse_mode="MarkdownV2", reply_markup=keyboard)
+        await target.reply(text, parse_mode="HTML", reply_markup=keyboard)
 
 @router.callback_query(F.data.startswith("listword_page|"))
 async def listword_page_callback(callback: CallbackQuery):
