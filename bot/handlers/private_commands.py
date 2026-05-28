@@ -21,7 +21,8 @@ class AnonStates(StatesGroup):
 # ---------- /start ----------
 @router.message(Command("start"))
 async def start_private(message: Message):
-await message.reply("**Бот готов к работе\\!**\nЗдесь вы можете использовать команды /menu и /anonim", parse_mode="MarkdownV2")
+    # Временно без parse_mode, чтобы избежать ошибок экранирования
+    await message.reply("**Бот готов к работе\\!**\nЗдесь вы можете использовать команды /menu и /anonim")
 
 # ---------- Общая клавиатура общих чатов ----------
 async def common_chats_keyboard(user_id: int, bot: Bot, for_anon: bool = False):
@@ -105,7 +106,7 @@ async def menu_action_callback(callback: CallbackQuery, bot: Bot):
             lines.append(f"• Сообщений за 7 дней: {msg_7d}")
         else:
             lines.append("• Сообщения отсутствуют")
-        await callback.message.reply("\n".join(lines), parse_mode="MarkdownV2")
+        await callback.message.reply("\n".join(lines))
     elif action == "chat":
         users = chat_data.get("users", {})
         settings = chat_data.get("settings", get_default_settings())
@@ -136,7 +137,7 @@ async def menu_action_callback(callback: CallbackQuery, bot: Bot):
             f"• Тип фильтра: {search_mode}",
             f"• Часовой пояс: UTC{tz}"
         ]
-        await callback.message.reply("\n".join(lines), parse_mode="MarkdownV2")
+        await callback.message.reply("\n".join(lines))
     elif action == "ranks":
         rank_lists = {"*": [], "**": [], "***": [], "****": [], "#": []}
         for uid, data in chat_data.get("users", {}).items():
@@ -161,11 +162,11 @@ async def menu_action_callback(callback: CallbackQuery, bot: Bot):
         for r in ["*", "**", "***", "****", "#"]:
             names = "; ".join(rank_lists[r]) if rank_lists[r] else "отсутствуют"
             lines.append(f"• {rank_names[r]}: {names}")
-        await callback.message.reply("\n".join(lines), parse_mode="MarkdownV2")
+        await callback.message.reply("\n".join(lines))
     elif action == "listword":
         words = chat_data.get("words", [])
         text = "**Чёрный список слов**\n" + "\n".join(f"• {w}" for w in words) if words else "Список пуст"
-        await callback.message.reply(text, parse_mode="MarkdownV2")
+        await callback.message.reply(text)
     await callback.answer()
 
 @router.callback_query(F.data == "menu_back")
@@ -178,7 +179,7 @@ async def menu_back_callback(callback: CallbackQuery, bot: Bot):
         await callback.message.edit_text("Выберите чат:", reply_markup=keyboard)
     await callback.answer()
 
-# ---------- /anonim (полностью реализован здесь) ----------
+# ---------- /anonim ----------
 @router.message(Command("anonim"))
 async def anonim_command(message: Message, bot: Bot, state: FSMContext):
     parts = message.text.split(maxsplit=1)
@@ -210,7 +211,6 @@ async def anon_confirm_callback(callback: CallbackQuery, state: FSMContext, bot:
     ])
     await callback.message.edit_text(
         f"**Вы действительно хотите отправить в чат анонимное сообщение?**\n{escape_markdown(text[:200])}",
-        parse_mode="MarkdownV2",
         reply_markup=keyboard
     )
     await callback.answer()
@@ -224,7 +224,7 @@ async def anon_send_callback(callback: CallbackQuery, state: FSMContext, bot: Bo
         await callback.answer("Ошибка", show_alert=True)
         await state.clear()
         return
-    await bot.send_message(int(chat_id), f"**Новое анонимное сообщение**\n{text}", parse_mode="MarkdownV2")
+    await bot.send_message(int(chat_id), f"**Новое анонимное сообщение**\n{text}")
     await callback.message.edit_text("✅ Сообщение отправлено")
     await callback.answer()
     await state.clear()
