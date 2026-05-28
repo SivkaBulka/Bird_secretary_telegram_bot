@@ -21,7 +21,7 @@ class AnonStates(StatesGroup):
 # ---------- /start ----------
 @router.message(Command("start"))
 async def start_private(message: Message):
-    await message.reply("**Бот готов к работе!**\nЗдесь вы можете использовать команды /menu и /anonim", parse_mode="MarkdownV2")
+await message.reply("**Бот готов к работе\\!**\nЗдесь вы можете использовать команды /menu и /anonim", parse_mode="MarkdownV2")
 
 # ---------- Общая клавиатура общих чатов ----------
 async def common_chats_keyboard(user_id: int, bot: Bot, for_anon: bool = False):
