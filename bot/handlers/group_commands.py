@@ -55,22 +55,23 @@ async def update_creator(bot: Bot, chat_id: str, chat_data: dict):
 async def extract_target(message: Message, bot: Bot):
     chat_id = message.chat.id
     chat_data = await get_chat(str(chat_id))
+    # Если ответ на сообщение
     if message.reply_to_message:
         user = message.reply_to_message.from_user
-        user_id = str(user.id)
-        user_name = get_user_mention(user)
-        user_rank = get_user_rank(chat_data, user_id)
-        return user_id, user_name, user_rank
-    args = message.text.split()
+        return str(user.id), get_user_mention(user), get_user_rank(chat_data, str(user.id))
+    # Если аргумент команды (ник)
+    args = message.text.split(maxsplit=1)
     if len(args) < 2:
         return None, None, None
-    username = args[1].lstrip('@')
-    uid, uname = await get_user_id_by_username(bot, chat_id, username)
-    if not uid:
+    username = args[1].lstrip('@').split()[0]  # берём первый токен без @
+    try:
+        member = await bot.get_chat_member(chat_id, f"@{username}")
+        uid = str(member.user.id)
+        name = get_user_mention(member.user)
+        rank = get_user_rank(chat_data, uid)
+        return uid, name, rank
+    except:
         return None, None, None
-    user_name = f"@{uname}" if uname else f"id{uid}"
-    user_rank = get_user_rank(chat_data, str(uid))
-    return str(uid), user_name, user_rank
 
 def has_rights(caller_rank: str, variant: int) -> bool:
     min_rank, _ = RIGHT_OPTIONS[variant]
@@ -677,18 +678,13 @@ async def setting_command(message: Message):
     if RANK_ORDER.index(caller_rank) < RANK_ORDER.index("****"):
         await message.reply("Ошибка: недостаточно прав")
         return
-    class FakeCallback:
-        def __init__(self, message):
-            self.message = message
-            self.from_user = message.from_user
-        async def answer(self, text=None, show_alert=False):
-            pass
-    fake = FakeCallback(message)
-    await setting_main(fake)
+    from ..callbacks import send_settings_menu
+    await send_settings_menu(message, chat_id)
 @router.message(Command("debug"))
 async def debug_command(message: Message, bot: Bot):
     chat_id = str(message.chat.id)
     chat_data = await get_chat(chat_id)
+    # Информация о создателе из API
     try:
         admins = await bot.get_chat_administrators(message.chat.id)
         api_creator = None
@@ -704,17 +700,32 @@ async def debug_command(message: Message, bot: Bot):
             creator_info = "не найден"
     except Exception as e:
         creator_info = f"ошибка: {e}"
+    # Локальный создатель
     local_creator = None
     for uid, data in chat_data.get("users", {}).items():
         if data.get("rank") == "#":
             local_creator = uid
             break
+    # Права бота
     bot_member = await bot.get_chat_member(message.chat.id, bot.id)
     bot_rights = f"{bot_member.status}, can_restrict={bot_member.can_restrict_members}, can_delete={bot_member.can_delete_messages}"
+    # Твой ID (вызывающего)
+    user_id = message.from_user.id
+    user_rank = get_user_rank(chat_data, str(user_id))
+    # Статистика по чату
+    users_count = len(chat_data.get("users", {}))
+    words_count = len(chat_data.get("words", []))
+    init_flag = chat_data.get("init", False)
+    # Отправляем ответ
     await message.reply(
-        f"<b>Отладка</b>\n"
+        f"<b>Отладка чата {message.chat.id}</b>\n"
         f"API создатель: {creator_info}\n"
         f"Локальный создатель: {local_creator}\n"
-        f"Права бота: {bot_rights}",
+        f"Твой ID: {user_id}\n"
+        f"Твой ранг: {user_rank}\n"
+        f"Права бота: {bot_rights}\n"
+        f"Всего пользователей в БД: {users_count}\n"
+        f"Слов в ЧС: {words_count}\n"
+        f"Чат инициализирован: {init_flag}",
         parse_mode="HTML"
     )
