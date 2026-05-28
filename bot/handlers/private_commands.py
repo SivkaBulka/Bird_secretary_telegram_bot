@@ -6,25 +6,20 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from ..database import get_chat, load_data
-from ..config import get_default_settings
+from ..config import get_default_settings, RANK_ORDER, RANK_NAMES
 from ..utils import escape_markdown
-from ..config import RANK_ORDER, RANK_NAMES
 from ..filters.chat_type import PrivateChatFilter
 
 router = Router()
 router.message.filter(PrivateChatFilter())
 
-# ---------- FSM для анонимных сообщений ----------
 class AnonStates(StatesGroup):
     waiting_for_chat = State()
 
-# ---------- /start ----------
 @router.message(Command("start"))
 async def start_private(message: Message):
-    # Временно без parse_mode, чтобы избежать ошибок экранирования
-    await message.reply("**Бот готов к работе\\!**\nЗдесь вы можете использовать команды /menu и /anonim")
+    await message.reply("<b>Бот готов к работе!</b>\nЗдесь вы можете использовать команды /menu и /anonim", parse_mode="HTML")
 
-# ---------- Общая клавиатура общих чатов ----------
 async def common_chats_keyboard(user_id: int, bot: Bot, for_anon: bool = False):
     all_data = await load_data()
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
@@ -44,7 +39,6 @@ async def common_chats_keyboard(user_id: int, bot: Bot, for_anon: bool = False):
     keyboard.inline_keyboard.sort(key=lambda x: x[0].text.lower())
     return keyboard
 
-# ---------- /menu ----------
 @router.message(Command("menu"))
 async def menu_command(message: Message, bot: Bot):
     user_id = message.from_user.id
@@ -89,7 +83,7 @@ async def menu_action_callback(callback: CallbackQuery, bot: Bot):
         msg_30d = user_data.get("msg_last_30d", 0)
         msg_7d = user_data.get("msg_last_7d", 0)
         tz = int(chat_data["settings"].get("timezone", "+3"))
-        lines = [f"**Статистика пользователя @{callback.from_user.username or callback.from_user.first_name}**"]
+        lines = [f"<b>Статистика пользователя @{callback.from_user.username or callback.from_user.first_name}</b>"]
         lines.append(f"• Ранг: {RANK_NAMES.get(rank, 'участник')}")
         if warns:
             lines.append(f"• Всего варнов: {warns}")
@@ -106,7 +100,7 @@ async def menu_action_callback(callback: CallbackQuery, bot: Bot):
             lines.append(f"• Сообщений за 7 дней: {msg_7d}")
         else:
             lines.append("• Сообщения отсутствуют")
-        await callback.message.reply("\n".join(lines))
+        await callback.message.reply("\n".join(lines), parse_mode="HTML")
     elif action == "chat":
         users = chat_data.get("users", {})
         settings = chat_data.get("settings", get_default_settings())
@@ -124,7 +118,7 @@ async def menu_action_callback(callback: CallbackQuery, bot: Bot):
         search_mode = "подстрока" if settings.get("search_mode") == "substring" else "точное совпадение"
         tz = settings.get("timezone", "+3")
         lines = [
-            "**Статистика чата**",
+            "<b>Статистика чата</b>",
             f"• Всего сообщений: {total_msgs}",
             f"• Сообщений за 30 дней: {msgs_30d}",
             f"• Сообщений за 7 дней: {msgs_7d}",
@@ -137,7 +131,7 @@ async def menu_action_callback(callback: CallbackQuery, bot: Bot):
             f"• Тип фильтра: {search_mode}",
             f"• Часовой пояс: UTC{tz}"
         ]
-        await callback.message.reply("\n".join(lines))
+        await callback.message.reply("\n".join(lines), parse_mode="HTML")
     elif action == "ranks":
         rank_lists = {"*": [], "**": [], "***": [], "****": [], "#": []}
         for uid, data in chat_data.get("users", {}).items():
@@ -151,7 +145,7 @@ async def menu_action_callback(callback: CallbackQuery, bot: Bot):
                 rank_lists[rank].append(uname)
         for r in rank_lists:
             rank_lists[r].sort()
-        lines = ["**Ранги**"]
+        lines = ["<b>Ранги</b>"]
         rank_names = {
             "*": "Младшие модераторы",
             "**": "Старшие модераторы",
@@ -162,11 +156,11 @@ async def menu_action_callback(callback: CallbackQuery, bot: Bot):
         for r in ["*", "**", "***", "****", "#"]:
             names = "; ".join(rank_lists[r]) if rank_lists[r] else "отсутствуют"
             lines.append(f"• {rank_names[r]}: {names}")
-        await callback.message.reply("\n".join(lines))
+        await callback.message.reply("\n".join(lines), parse_mode="HTML")
     elif action == "listword":
         words = chat_data.get("words", [])
-        text = "**Чёрный список слов**\n" + "\n".join(f"• {w}" for w in words) if words else "Список пуст"
-        await callback.message.reply(text)
+        text = "<b>Чёрный список слов</b>\n" + "\n".join(f"• {w}" for w in words) if words else "Список пуст"
+        await callback.message.reply(text, parse_mode="HTML")
     await callback.answer()
 
 @router.callback_query(F.data == "menu_back")
@@ -179,7 +173,6 @@ async def menu_back_callback(callback: CallbackQuery, bot: Bot):
         await callback.message.edit_text("Выберите чат:", reply_markup=keyboard)
     await callback.answer()
 
-# ---------- /anonim ----------
 @router.message(Command("anonim"))
 async def anonim_command(message: Message, bot: Bot, state: FSMContext):
     parts = message.text.split(maxsplit=1)
@@ -210,7 +203,8 @@ async def anon_confirm_callback(callback: CallbackQuery, state: FSMContext, bot:
          InlineKeyboardButton(text="❌ Отмена", callback_data="anon_cancel")]
     ])
     await callback.message.edit_text(
-        f"**Вы действительно хотите отправить в чат анонимное сообщение?**\n{escape_markdown(text[:200])}",
+        f"<b>Вы действительно хотите отправить в чат анонимное сообщение?</b>\n{escape_markdown(text[:200])}",
+        parse_mode="HTML",
         reply_markup=keyboard
     )
     await callback.answer()
@@ -224,7 +218,7 @@ async def anon_send_callback(callback: CallbackQuery, state: FSMContext, bot: Bo
         await callback.answer("Ошибка", show_alert=True)
         await state.clear()
         return
-    await bot.send_message(int(chat_id), f"**Новое анонимное сообщение**\n{text}")
+    await bot.send_message(int(chat_id), f"<b>Новое анонимное сообщение</b>\n{text}", parse_mode="HTML")
     await callback.message.edit_text("✅ Сообщение отправлено")
     await callback.answer()
     await state.clear()
