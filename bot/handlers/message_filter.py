@@ -120,17 +120,17 @@ async def message_counter_and_filter(message: Message, bot: Bot):
     # Формируем ответ пользователю
     user_name = escape_markdown(message.from_user.first_name)
     if filter_mode in ("only_del", "del_warn"):
-        response = f"**{user_name} получает варн, в его сообщении {word_count} запрещённых слов**\nВсего варнов: {user['warns']}"
+        response = f"<b>{user_name} получает варн, в его сообщении {word_count} запрещённых слов<b>\nВсего варнов: {user['warns']}"
     else:  # only_warn
         if word_count <= 16:
             words_list = "\n".join(escape_markdown(w) for w in unique_found)
-            response = f"**{user_name} получает варн, в его сообщении были запрещённые слова:**\n{words_list}\nВсего варнов: {user['warns']}"
+            response = f"<b>{user_name} получает варн, в его сообщении были запрещённые слова:<b>\n{words_list}\nВсего варнов: {user['warns']}"
         else:
             first_16 = "\n".join(escape_markdown(w) for w in unique_found[:16])
             remaining = word_count - 16
-            response = f"**{user_name} получает варн, в его сообщении были запрещённые слова:**\n{first_16}\nи ещё {remaining} запрещённых слов\nВсего варнов: {user['warns']}"
+            response = f"<b>{user_name} получает варн, в его сообщении были запрещённые слова:<b>\n{first_16}\nи ещё {remaining} запрещённых слов\nВсего варнов: {user['warns']}"
     
-    await message.reply(response, parse_mode="MarkdownV2")
+    await message.reply(response, parse_mode="HTML")
 
 async def update_creator(bot: Bot, chat_id: str, chat_data: dict):
     try:
