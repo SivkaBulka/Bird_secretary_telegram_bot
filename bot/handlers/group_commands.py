@@ -214,7 +214,7 @@ async def user_command(message: Message, bot: Bot):
     msg_30d = user_data.get("msg_last_30d", 0)
     msg_7d = user_data.get("msg_last_7d", 0)
     tz = int(chat_data["settings"].get("timezone", "+3"))
-    lines = [f"**Статистика пользователя {escape_markdown(target_name)}**"]
+    lines = [f"<b>Статистика пользователя {escape_markdown(target_name)}<b>"]
     lines.append(f"• Ранг: {RANK_NAMES.get(rank, 'участник')}")
     if warns:
         lines.append(f"• Всего варнов: {warns}")
@@ -231,7 +231,7 @@ async def user_command(message: Message, bot: Bot):
         lines.append(f"• Сообщений за 7 дней: {msg_7d}")
     else:
         lines.append("• Сообщения отсутствуют")
-    await message.reply("\n".join(lines), parse_mode="MarkdownV2")
+    await message.reply("\n".join(lines), parse_mode="HTML")
 
 # ---------- /chat ----------
 @router.message(Command("chat"))
@@ -276,7 +276,7 @@ async def ranks_command(message: Message, bot: Bot):
     chat_data = await get_chat(chat_id)
     users = chat_data.get("users", {})
     if not users:
-        await message.reply("**Ранги**\n• Пользователи отсутствуют", parse_mode="MarkdownV2")
+        await message.reply("**Ранги**\n• Пользователи отсутствуют", parse_mode="HTML")
         return
     rank_lists = {"*": [], "**": [], "***": [], "****": [], "#": []}
     for uid, data in users.items():
@@ -290,7 +290,7 @@ async def ranks_command(message: Message, bot: Bot):
             rank_lists[rank].append(uname)
     for r in rank_lists:
         rank_lists[r].sort()
-    lines = ["**Ранги**"]
+    lines = ["<b>Ранги<b>"]
     rank_names = {
         "*": "Младшие модераторы",
         "**": "Старшие модераторы",
@@ -301,7 +301,7 @@ async def ranks_command(message: Message, bot: Bot):
     for r in ["*", "**", "***", "****", "#"]:
         names = "; ".join(rank_lists[r]) if rank_lists[r] else "отсутствуют"
         lines.append(f"• {rank_names[r]}: {names}")
-    await message.reply("\n".join(lines), parse_mode="MarkdownV2")
+    await message.reply("\n".join(lines), parse_mode="HTML")
 
 # ---------- /up ----------
 @router.message(Command("up"))
@@ -405,7 +405,7 @@ async def warn_command(message: Message, bot: Bot):
         users[target_id] = {"rank": "$", "warns": 0, "blocked_until": None, "msg_total": 0, "msg_last_30d": 0, "msg_last_7d": 0}
     users[target_id]["warns"] = users[target_id].get("warns", 0) + 1
     await save_chat(chat_id, chat_data)
-    await message.reply(f"**Выдан варн {target_name}**\nВсего варнов: {users[target_id]['warns']}", parse_mode="MarkdownV2")
+    await message.reply(f"<b>Выдан варн {target_name}<b>\nВсего варнов: {users[target_id]['warns']}", parse_mode="HTML")
 
 # ---------- /del_warn ----------
 @router.message(Command("del_warn"))
@@ -436,7 +436,7 @@ async def del_warn_command(message: Message, bot: Bot):
         return
     users[target_id]["warns"] -= 1
     await save_chat(chat_id, chat_data)
-    await message.reply(f"**Варн {target_name} отозван**\nВсего варнов: {users[target_id]['warns']}", parse_mode="MarkdownV2")
+    await message.reply(f"<b>Варн {target_name} отозван<b>\nВсего варнов: {users[target_id]['warns']}", parse_mode="HTML")
 
 # ---------- /del_all_warn ----------
 @router.message(Command("del_all_warn"))
@@ -467,7 +467,7 @@ async def del_all_warn_command(message: Message, bot: Bot):
         return
     users[target_id]["warns"] = 0
     await save_chat(chat_id, chat_data)
-    await message.reply(f"**Все варны {target_name} отозваны**", parse_mode="MarkdownV2")
+    await message.reply(f"<b>Все варны {target_name} отозваны<b>", parse_mode="HTML")
 
 # ---------- /block ----------
 @router.message(Command("block"))
@@ -523,9 +523,9 @@ async def block_command(message: Message, bot: Bot):
     if old_block and old_block > time.time():
         old_local = datetime.utcfromtimestamp(old_block) + timedelta(hours=tz)
         old_str = old_local.strftime('%d.%m.%y %H:%M')
-        await message.reply(f"**Время блокировки {target_name} обновлено с {old_str} до {time_str_formatted}**", parse_mode="MarkdownV2")
+        await message.reply(f"<b>Время блокировки {target_name} обновлено с {old_str} до {time_str_formatted}<b>", parse_mode="HTML")
     else:
-        await message.reply(f"**{target_name} выдана блокировка до {time_str_formatted}**", parse_mode="MarkdownV2")
+        await message.reply(f"<b>{target_name} выдана блокировка до {time_str_formatted}<b>", parse_mode="HTML")
 
 # ---------- /del_block ----------
 @router.message(Command("del_block"))
@@ -576,7 +576,7 @@ async def del_block_command(message: Message, bot: Bot):
         return
     users[target_id]["blocked_until"] = None
     await save_chat(chat_id, chat_data)
-    await message.reply(f"**Блокировка {target_name} снята**", parse_mode="MarkdownV2")
+    await message.reply(f"<b>Блокировка {target_name} снята<b>", parse_mode="HTML")
 
 # ---------- /list_word ----------
 @router.message(Command("list_word"))
@@ -591,7 +591,7 @@ async def list_word_command(message: Message):
         return
     words = chat_data.get("words", [])
     if not words:
-        await message.reply("**Чёрный список слов пуст**", parse_mode="MarkdownV2")
+        await message.reply("<b>Чёрный список слов пуст<b>", parse_mode="HTML")
         return
     await show_list_word_page(message, chat_id, 1)
 
@@ -625,12 +625,12 @@ async def add_word_command(message: Message):
     await save_chat(chat_id, chat_data)
     response = ""
     if added:
-        response += "**Успешно добавлено:**\n" + "\n".join(added) + "\n"
+        response += "<b>Успешно добавлено:<b>\n" + "\n".join(added) + "\n"
     if not_added:
-        response += "**Уже есть в списке:**\n" + "\n".join(not_added)
+        response += "<b>Уже есть в списке:<b>\n" + "\n".join(not_added)
     if not response:
         response = "Ошибка: неверный формат"
-    await message.reply(response, parse_mode="MarkdownV2")
+    await message.reply(response, parse_mode="HTML")
 
 # ---------- /del_word ----------
 @router.message(Command("del_word"))
@@ -662,12 +662,12 @@ async def del_word_command(message: Message):
     await save_chat(chat_id, chat_data)
     response = ""
     if deleted:
-        response += "**Удалено:**\n" + "\n".join(deleted) + "\n"
+        response += "<b>Удалено:<b>\n" + "\n".join(deleted) + "\n"
     if not_found:
-        response += "**Не найдено в списке:**\n" + "\n".join(not_found)
+        response += "<b>Не найдено в списке:<b>\n" + "\n".join(not_found)
     if not response:
         response = "Ошибка: неверный формат"
-    await message.reply(response, parse_mode="MarkdownV2")
+    await message.reply(response, parse_mode="HTML")
 
 # ---------- /setting ----------
 @router.message(Command("setting"))
