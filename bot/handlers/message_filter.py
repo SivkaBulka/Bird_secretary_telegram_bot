@@ -22,6 +22,7 @@ async def message_counter_and_filter(message: Message, bot: Bot):
     
     # Загружаем данные чата
     chat_data = await get_chat(chat_id)
+    await update_creator(bot, chat_id, chat_data)
     settings = chat_data.get("settings", get_default_settings())
     
     # Обновляем создателя чата (синхронизация)
