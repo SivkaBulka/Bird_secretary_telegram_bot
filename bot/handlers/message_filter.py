@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from aiogram import Router, Bot, F
 from aiogram.types import Message
 from aiogram.exceptions import TelegramBadRequest
+from .group_commands import update_creator
 
 from ..database import get_chat, save_chat, delete_user
 from ..config import get_default_settings
@@ -35,11 +36,11 @@ async def message_counter_and_filter(message: Message, bot: Bot):
             bot_member = await bot.get_chat_member(message.chat.id, bot.id)
             if bot_member.status in ("administrator", "creator") and bot_member.can_restrict_members and bot_member.can_delete_messages:
                 await message.answer(
-                    "**Бот готов к работе!**\n"
+                    "<b>Бот готов к работе!<b>\n"
                     "Для поиска команд используйте /help\n"
                     "Для настройки чата используйте /setting\n"
                     "Используйте /up чтобы назначить админов",
-                    parse_mode="MarkdownV2"
+                    parse_mode="HTML"
                 )
             else:
                 await message.answer("Ошибка: у бота недостаточно прав для работы")
